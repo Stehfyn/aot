@@ -20,18 +20,37 @@ IMAGE_DOS_HEADER __ImageBase;
 #define AOTAPI        __declspec(dllimport)
 #endif
 
+#ifdef _M_X64
+#define ARCH(identifier) identifier##64
+#define iD "AOTInstanceMutex64"
+#else
+#define ARCH(identifier) identifier##32
+#define iD "AOTInstanceMutex32"
+#endif
+
+#define STRINGIZE(x) #x
+
+#define SHARED_SEGMENT_DATA(segment, type, identifier, assign)   \
+    __pragma(data_seg(segment))                                  \
+        static type ARCH(identifier) = assign;                   \
+    __pragma(data_seg())                                         \
+    __pragma(comment(linker, "/SECTION:"segment",RWS"))
+
 #ifdef _WINDLL
-#pragma data_seg(".shared")
-static HHOOK     hCbtHook           = NULL;
-static HINSTANCE hCbtHookModule     = NULL;
-static HWND      hWndHookMarshaller = NULL;
-#pragma data_seg()
-#pragma comment(linker, "/SECTION:.shared,RWS")
+#ifdef _M_X64
+SHARED_SEGMENT_DATA(".shared64", HHOOK, hCbtHook,           NULL);
+SHARED_SEGMENT_DATA(".shared64", HINSTANCE, hCbtHookModule, NULL);
+SHARED_SEGMENT_DATA(".shared64", HWND, hWndHookMarshaller,  NULL);
+#else
+SHARED_SEGMENT_DATA(".shared32", HHOOK, hCbtHook,           NULL);
+SHARED_SEGMENT_DATA(".shared32", HINSTANCE, hCbtHookModule, NULL);
+SHARED_SEGMENT_DATA(".shared32", HWND, hWndHookMarshaller,  NULL);
+#endif
 #endif
 
 #define AOT_WINDOW_NAME            (TEXT("AOT"))
 #define AOT_CLASS_NAME             (TEXT("AOTClass"))
-#define AOT_INSTANCE_MUTEX         (TEXT("AOTInstanceMutex"))
+#define AOT_INSTANCE_MUTEX         (TEXT(iD))
 
 #define AOT_MENU_ALWAYS_ON_TOP     (0x69)
 #define AOT_MENU_EXIT              (0x69 + 1)
@@ -133,6 +152,10 @@ OnNcCreate(
     {
       return FORWARD_WM_NCCREATE(hWnd, lpCreateStruct, DefWindowProc);
     }
+  }
+  else
+  {
+    printf("AOT already running\nPS YOU ARE GAY\n");
   }
 
   WaitForSingleObjectEx(hInstanceMutex, 1000, FALSE);
@@ -356,7 +379,7 @@ CBTProc(
   case HCBT_SYSCOMMAND:
   {
     PostMessage(
-      hWndHookMarshaller,
+      ARCH(hWndHookMarshaller),
       WM_AOTCBTHOOK,
       (WPARAM)(DWORD)nCode,
       0
@@ -365,7 +388,7 @@ CBTProc(
   }
   }
 
-  return CallNextHookEx(hCbtHook, nCode, wParam, lParam);
+  return CallNextHookEx(ARCH(hCbtHook), nCode, wParam, lParam);
 }
 EXTERN_C
 AOTAPI
@@ -374,11 +397,11 @@ __cdecl
 SetCbtHook(
   HWND hWnd)
 {
-  HHOOK hook = SetWindowsHookEx(WH_CBT, CBTProc, hCbtHookModule, 0);
+  HHOOK hook = SetWindowsHookEx(WH_CBT, CBTProc, ARCH(hCbtHookModule), 0);
   if (hook)
   {
-    hCbtHook           = hook;
-    hWndHookMarshaller = hWnd;
+    ARCH(hCbtHook) = hook;
+    ARCH(hWndHookMarshaller) = hWnd;
     return TRUE;
   }
   return FALSE;
@@ -390,10 +413,10 @@ __cdecl
 UnsetCbtHook(
   VOID)
 {
-  if (hCbtHook)
+  if (ARCH(hCbtHook))
   {
-    UnhookWindowsHookEx(hCbtHook);
-    hWndHookMarshaller = NULL;
+    UnhookWindowsHookEx(ARCH(hCbtHook));
+    ARCH(hWndHookMarshaller) = NULL;
     return TRUE;
   }
   return FALSE;
@@ -503,7 +526,7 @@ AotCbtHookThread(
       DispatchMessage(&msg);
       if (WM_AOTEXIT == msg.message) break;
     }
-    //UnsetCbtHook();
+    UnsetCbtHook();
     return EXIT_SUCCESS;
   }
 
@@ -597,7 +620,7 @@ DllMain(
   {
   case DLL_PROCESS_ATTACH:
   {
-    hCbtHookModule = hModule;
+    ARCH(hCbtHookModule) = hModule;
     DisableThreadLibraryCalls(hModule);
     break;
   }
