@@ -23,29 +23,23 @@ IMAGE_DOS_HEADER __ImageBase;
 #ifdef _M_X64
 #define ARCH(identifier) identifier##64
 #define iD "AOTInstanceMutex64"
+#define SEGMENT ".shared64"
 #else
 #define ARCH(identifier) identifier##32
+#define SEGMENT ".shared32"
 #define iD "AOTInstanceMutex32"
 #endif
 
 #define STRINGIZE(x) #x
 
-#define SHARED_SEGMENT_DATA(segment, type, identifier, assign)   \
-    __pragma(data_seg(segment))                                  \
-        static type ARCH(identifier) = assign;                   \
-    __pragma(data_seg())                                         \
-    __pragma(comment(linker, "/SECTION:"segment",RWS"))
 
 #ifdef _WINDLL
-#ifdef _M_X64
-SHARED_SEGMENT_DATA(".shared64", HHOOK, hCbtHook,           NULL);
-SHARED_SEGMENT_DATA(".shared64", HINSTANCE, hCbtHookModule, NULL);
-SHARED_SEGMENT_DATA(".shared64", HWND, hWndHookMarshaller,  NULL);
-#else
-SHARED_SEGMENT_DATA(".shared32", HHOOK, hCbtHook,           NULL);
-SHARED_SEGMENT_DATA(".shared32", HINSTANCE, hCbtHookModule, NULL);
-SHARED_SEGMENT_DATA(".shared32", HWND, hWndHookMarshaller,  NULL);
-#endif
+#pragma section(SEGMENT, read, write, shared)
+#define ALLOC_SEGMENT(segment, type, identifier, assign)   \
+    __declspec(allocate(SEGMENT)) __declspec(selectany) type ARCH(identifier) = assign;
+ALLOC_SEGMENT(SEGMENT, HHOOK,     hCbtHook,           NULL);
+ALLOC_SEGMENT(SEGMENT, HINSTANCE, hCbtHookModule,     NULL);
+ALLOC_SEGMENT(SEGMENT, HWND,      hWndHookMarshaller, NULL);
 #endif
 
 #define AOT_WINDOW_NAME            (TEXT("AOT"))
