@@ -10,6 +10,7 @@
 #include <tchar.h>
 #include <shellscalingapi.h>
 #include <shlwapi.h>
+#include <commctrl.h>
 
 EXTERN_C
 IMAGE_DOS_HEADER __ImageBase;
@@ -21,11 +22,11 @@ IMAGE_DOS_HEADER __ImageBase;
 #endif
 
 #ifdef _M_X64
-#define ARCH(identifier) identifier##64
+#define ARCH(identifier) identifier ## 64
 #define iD "AOTInstanceMutex64"
 #define SEGMENT ".shared64"
 #else
-#define ARCH(identifier) identifier##32
+#define ARCH(identifier) identifier ## 32
 #define SEGMENT ".shared32"
 #define iD "AOTInstanceMutex32"
 #endif
@@ -36,10 +37,11 @@ IMAGE_DOS_HEADER __ImageBase;
 #ifdef _WINDLL
 #pragma section(SEGMENT, read, write, shared)
 #define ALLOC_SEGMENT(segment, type, identifier, assign)   \
-    __declspec(allocate(SEGMENT)) __declspec(selectany) type ARCH(identifier) = assign;
+        __declspec(allocate(SEGMENT)) __declspec(selectany) type ARCH(identifier) = assign;
 ALLOC_SEGMENT(SEGMENT, HHOOK,     hCbtHook,           NULL);
 ALLOC_SEGMENT(SEGMENT, HINSTANCE, hCbtHookModule,     NULL);
 ALLOC_SEGMENT(SEGMENT, HWND,      hWndHookMarshaller, NULL);
+ALLOC_SEGMENT(SEGMENT, DWORD,     dwAotProcessId,     0);
 #endif
 
 #define AOT_WINDOW_NAME            (TEXT("AOT"))
@@ -64,13 +66,13 @@ ALLOC_SEGMENT(SEGMENT, HWND,      hWndHookMarshaller, NULL);
         ((fn)((hWnd), (DWORD)(wParam), MAKEPOINTS((lParam))), 0L)
 
 #define HANDLE_WM_AOTCBTHOOK(hWnd, wParam, lParam, fn) \
-        ((fn)((hWnd), (INT)(DWORD)(wParam)), 0L)
+        ((fn)((hWnd), (INT)(DWORD)(wParam), (HWND)(LONG_PTR)(lParam)), 0L)
 
 #define PADDING(x) __declspec(align(x)) unsigned __int8 reserved[x];
 
 typedef struct _AOTUSERDATA {
-  DWORD dwAotMouseHookThreadId;
-  DWORD dwAotCbtHookThreadId;
+  DWORD dwMouseHookThreadId;
+  DWORD dwCbtHookThreadId;
   BOOL  fAlwaysOnTop;
 #ifdef _M_X64
   PADDING(4)
@@ -81,6 +83,22 @@ typedef enum _AOTHOOKTHREAD {
   AOTMOUSEHOOKTHREAD,
   AOTCBTHOOKTHREAD,
 } AOTHOOKTHREAD;
+
+EXTERN_C
+AOTAPI
+BOOL
+__cdecl
+SetCbtHook(
+  HWND hWnd
+);
+
+EXTERN_C
+AOTAPI
+BOOL
+__cdecl
+UnsetCbtHook(
+  VOID
+);
 
 static
 CFORCEINLINE
@@ -149,7 +167,7 @@ OnNcCreate(
   }
   else
   {
-    printf("AOT already running\nPS YOU ARE GAY\n");
+    printf("AOT already running\n");
   }
 
   WaitForSingleObjectEx(hInstanceMutex, 1000, FALSE);
@@ -172,12 +190,12 @@ OnAotInit(
   switch (dwHookThread) {
   case AOTMOUSEHOOKTHREAD: {
     wprintf(L"AotMouseHookThreadInit %ld\n", dwAotHookThreadId);
-    lpAotUserData->dwAotMouseHookThreadId = dwAotHookThreadId;
+    lpAotUserData->dwMouseHookThreadId = dwAotHookThreadId;
     break;
   }
   case AOTCBTHOOKTHREAD: {
     wprintf(L"AotCbtHookThreadInit %ld\n", dwAotHookThreadId);
-    lpAotUserData->dwAotCbtHookThreadId = dwAotHookThreadId;
+    lpAotUserData->dwCbtHookThreadId = dwAotHookThreadId;
     break;
   }
   default:
@@ -203,79 +221,30 @@ OnAotMouseHook(
 
   if (hWndHit && GetKeyState(VK_LCONTROL) < 0)
   {
+    //HMENU hMenu = GetSystemMenu(hWndHit, TRUE);
+//(void)hMenu;
     //HMENU hMenu = (HMENU)FindOpenMenuWindow();
     //if (hMenu)
     //{
     //  wprintf(L"Menu: %ld\n", (LONG)hMenu);
     //  return;
     //}
-    TCHAR szText[256];
-    GetWindowText(hWndHit, szText, ARRAYSIZE(szText));
-    wprintf(
-    //  L"AOT: %llu, %ld %ld %ld %s\n",
-      L"AOT: %ld %s\n",
-      //(LONG_PTR)hWndHit,
-      //pt.x,
-      //pt.y,
-      mouseData,
-      szText
-    );
 
-    HMENU hPopupMenu = CreatePopupMenu();
-    AppendMenu(
-      hPopupMenu,
-      MF_BYPOSITION | MF_STRING,
-      AOT_MENU_ALWAYS_ON_TOP,
-      AOT_MENUTEXT_ALWAYS_ON_TOP
-    );
-    AppendMenu(hPopupMenu, MF_BYPOSITION | MF_STRING, AOT_MENU_EXIT, AOT_MENUTEXT_EXIT);
-    HWND  hWndForeground        = GetForegroundWindow();
-    DWORD windowThreadProcessId = GetWindowThreadProcessId(hWndForeground, (LPDWORD)0);
-    DWORD currentThreadId       = GetCurrentThreadId();
-    DWORD CONST_SW_SHOW         = 5;
-    LogWindowText(hWndForeground);
-    AttachThreadInput(windowThreadProcessId, currentThreadId, TRUE);
-    BringWindowToTop(hWnd);
-    ShowWindow(hWnd, CONST_SW_SHOW);
-    AttachThreadInput(windowThreadProcessId, currentThreadId, FALSE);
-    INT nMenuId = (INT)TrackPopupMenu(
-      hPopupMenu,
-      TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
-      pt.x,
-      pt.y,
-      0,
-      hWnd,
-      NULL
-    );
-    SetForegroundWindow(hWndForeground);
-    if(nMenuId)
-    {
-      switch (nMenuId)
-      {
-      case AOT_MENU_ALWAYS_ON_TOP:
-      {
-        DWORD exStyle = (DWORD)GetWindowLong(hWndHit, GWL_EXSTYLE);
-        (VOID)SetWindowPos(
-          hWndHit,
-          (exStyle & WS_EX_TOPMOST) ? HWND_NOTOPMOST : HWND_TOPMOST,
-          0,
-          0,
-          0,
-          0,
-          SWP_NOMOVE | SWP_NOSIZE
-        );
-        break;
-      }
-      case AOT_MENU_EXIT:
-      {
-        LPAOTUSERDATA lpAot = (LPAOTUSERDATA)GetWindowLongPtr(hWnd, GWLP_USERDATA);
-        PostThreadMessage(lpAot->dwAotMouseHookThreadId, WM_AOTEXIT, 0, 0);
-        PostQuitMessage(0);
-        break;
-      }
-      }
-    }
-    DestroyMenu(hPopupMenu);
+  }
+}
+
+static
+CFORCEINLINE
+LPTSTR
+CALLBACK
+GetCbtMessageName(
+  int nCode)
+{
+  switch(nCode){
+  case HCBT_ACTIVATE: return _T("HCBT_ACTIVATE");
+  case HCBT_CREATEWND: return _T("HCBT_CREATEWND");
+  case HCBT_DESTROYWND: return _T("HCBT_DESTROYWND");
+  default: return _T("");
   }
 }
 
@@ -285,25 +254,91 @@ VOID
 CALLBACK
 OnAotCbtHook(
   HWND hWnd,
-  int  nCode)
+  int  nCode,
+  HWND hWnd2)
 {
   static int i = 0;
   UNREFERENCED_PARAMETER(hWnd);
-  if (nCode == HCBT_SETFOCUS) {
+  TCHAR szClassName[256];
+  if(GetClassName(hWnd2, szClassName, ARRAYSIZE(szClassName)))
+  {
+    _tprintf(_T("%d AotCbtHook %s Context Menu %s\n"), i++, GetCbtMessageName(nCode), szClassName);
 
-    wprintf(L"%d AotCbtHook HCBT_SETFOCUS\n", i++);
-  }
-  else if (nCode == HCBT_ACTIVATE) {
+    if(GetKeyState(VK_LCONTROL) < 0)
+    {
+      POINT cursor = {0};
+      GetCursorPos(&cursor);
 
-    wprintf(L"%d AotCbtHook HCBT_ACTIVATE\n", i++);
-  }
-  else if (nCode == HCBT_CREATEWND) {
+      HMENU hPopupMenu = CreatePopupMenu();
+      AppendMenu(
+        hPopupMenu,
+        MF_BYPOSITION | MF_STRING,
+        AOT_MENU_ALWAYS_ON_TOP,
+        AOT_MENUTEXT_ALWAYS_ON_TOP
+      );
 
-    wprintf(L"%d AotCbtHook HCBT_CREATEWND\n", i++);
+      AppendMenu(hPopupMenu, MF_BYPOSITION | MF_STRING, AOT_MENU_EXIT, AOT_MENUTEXT_EXIT);
+      HWND  hWndForeground        = GetForegroundWindow();
+      DWORD windowThreadProcessId = GetWindowThreadProcessId(hWndForeground, (LPDWORD)0);
+      DWORD currentThreadId       = GetCurrentThreadId();
+      DWORD CONST_SW_SHOW         = 5;
+      LogWindowText(hWndForeground);
+      AttachThreadInput(windowThreadProcessId, currentThreadId, TRUE);
+      BringWindowToTop(hWnd);
+      ShowWindow(hWnd, CONST_SW_SHOW);
+      AttachThreadInput(windowThreadProcessId, currentThreadId, FALSE);
+      INT nMenuId = (INT)TrackPopupMenu(
+        hPopupMenu,
+        TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+        cursor.x,
+        cursor.y - 80,
+        0,
+        hWnd,
+        NULL
+      );
+      if (nMenuId)
+      {
+        switch (nMenuId)
+        {
+        case AOT_MENU_ALWAYS_ON_TOP:
+        {
+          DWORD exStyle = (DWORD)GetWindowLong(hWnd2, GWL_EXSTYLE);
+          (VOID)SetWindowPos(
+            hWnd2,
+            (exStyle & WS_EX_TOPMOST) ? HWND_NOTOPMOST : HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE
+          );
+          break;
+        }
+        case AOT_MENU_EXIT:
+        {
+          LPAOTUSERDATA lpAot = (LPAOTUSERDATA)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+          PostThreadMessage(lpAot->dwMouseHookThreadId, WM_AOTEXIT, 0, 0);
+          PostQuitMessage(0);
+          break;
+        }
+        }
+      }
+      DestroyMenu(hPopupMenu);
+    }
+    //if(!_tccmp(szClassName, _T("32768")))
+    //{
+    //}
   }
-  else {
-    wprintf(L"%d AotCbtHook %d\n", i++, nCode);
-  }
+}
+
+static
+CFORCEINLINE
+VOID
+CALLBACK
+OnClose(
+  HWND hWnd)
+{
+  DestroyWindow(hWnd);
 }
 
 static
@@ -314,18 +349,34 @@ OnDestroy(
   HWND hWnd)
 {
   LPAOTUSERDATA lpAotUserData = (LPAOTUSERDATA)GetWindowLongPtr(hWnd, GWLP_USERDATA);
-  if (lpAotUserData)
+
+  if (lpAotUserData->dwCbtHookThreadId)
   {
-    if (lpAotUserData->dwAotMouseHookThreadId)
+    HANDLE hCbtHookThread = OpenThread(SYNCHRONIZE, FALSE, lpAotUserData->dwCbtHookThreadId);
+    PostThreadMessage(lpAotUserData->dwCbtHookThreadId, WM_AOTEXIT, 0, 0);
+
+    if (hCbtHookThread)
     {
-      PostThreadMessage(lpAotUserData->dwAotMouseHookThreadId, WM_AOTEXIT, 0, 0);
+      WaitForSingleObject(hCbtHookThread, INFINITE);
+      CloseHandle(hCbtHookThread);
     }
-    if (lpAotUserData->dwAotCbtHookThreadId)
-    {
-      PostThreadMessage(lpAotUserData->dwAotCbtHookThreadId, WM_AOTEXIT, 0, 0);
-    }
-    PostQuitMessage(0);
   }
+
+  if (lpAotUserData->dwMouseHookThreadId)
+  {
+    HANDLE hMouseHookThread = OpenThread(SYNCHRONIZE, FALSE, lpAotUserData->dwMouseHookThreadId);
+    PostThreadMessage(lpAotUserData->dwMouseHookThreadId, WM_AOTEXIT, 0, 0);
+
+    if (hMouseHookThread)
+    {
+      WaitForSingleObject(hMouseHookThread, INFINITE);
+      CloseHandle(hMouseHookThread);
+    }
+  }
+
+  //printf("UnsetHook()\n");
+  UnsetCbtHook();
+  PostQuitMessage(0);
 }
 
 static
@@ -359,31 +410,26 @@ CBTProc(
   WPARAM wParam,
   LPARAM lParam)
 {
-  switch (nCode)
-  {
+  switch (nCode) {
   case HCBT_ACTIVATE:
   case HCBT_CREATEWND:
   case HCBT_DESTROYWND:
-  case HCBT_MINMAX:
-  case HCBT_MOVESIZE:
-  case HCBT_SETFOCUS:
-  case HCBT_CLICKSKIPPED:
-  case HCBT_KEYSKIPPED:
-  case HCBT_QS:
-  case HCBT_SYSCOMMAND:
   {
     PostMessage(
       ARCH(hWndHookMarshaller),
       WM_AOTCBTHOOK,
       (WPARAM)(DWORD)nCode,
-      0
+      (LPARAM)(LONG_PTR)wParam
     );
     break;
   }
+  default:
+    break;
   }
 
   return CallNextHookEx(ARCH(hCbtHook), nCode, wParam, lParam);
 }
+
 EXTERN_C
 AOTAPI
 BOOL
@@ -394,12 +440,13 @@ SetCbtHook(
   HHOOK hook = SetWindowsHookEx(WH_CBT, CBTProc, ARCH(hCbtHookModule), 0);
   if (hook)
   {
-    ARCH(hCbtHook) = hook;
+    ARCH(hCbtHook)           = hook;
     ARCH(hWndHookMarshaller) = hWnd;
     return TRUE;
   }
   return FALSE;
 }
+
 EXTERN_C
 AOTAPI
 BOOL
@@ -407,33 +454,21 @@ __cdecl
 UnsetCbtHook(
   VOID)
 {
+  DWORD dwExitCode = EXIT_FAILURE;
   if (ARCH(hCbtHook))
   {
     UnhookWindowsHookEx(ARCH(hCbtHook));
     ARCH(hWndHookMarshaller) = NULL;
-    return TRUE;
+    dwExitCode               = EXIT_SUCCESS;
   }
-  return FALSE;
+  FreeLibraryAndExitThread(ARCH(hCbtHookModule), dwExitCode);
 }
-#else
-EXTERN_C
-AOTAPI
-BOOL
-__cdecl
-SetCbtHook(
-  HWND hWnd
-);
-EXTERN_C
-AOTAPI
-BOOL
-__cdecl
-UnsetCbtHook(
-  VOID
-);
+
+
 #endif
 
 static
-FORCEINLINE
+CFORCEINLINE
 LRESULT
 CALLBACK
 WndProc(
@@ -447,6 +482,7 @@ WndProc(
   HANDLE_MSG(hWnd, WM_AOTHOOKINIT,  OnAotInit);
   HANDLE_MSG(hWnd, WM_AOTMOUSEHOOK, OnAotMouseHook);
   HANDLE_MSG(hWnd, WM_AOTCBTHOOK,   OnAotCbtHook);
+  HANDLE_MSG(hWnd, WM_CLOSE,        OnClose);
   HANDLE_MSG(hWnd, WM_DESTROY,      OnDestroy);
   }
   return DefWindowProc(hWnd, message, wParam, lParam);
@@ -473,8 +509,8 @@ AotMouseHookThread(
     PostMessage(
       *(HWND*)lphWnd,
       WM_AOTHOOKINIT,
-      (WPARAM) (DWORD) AOTMOUSEHOOKTHREAD,
-      (LPARAM) (DWORD) GetCurrentThreadId()
+      (WPARAM)(DWORD)AOTMOUSEHOOKTHREAD,
+      (LPARAM)(DWORD)GetCurrentThreadId()
     );
 
     while (GetMessage(&msg, NULL, 0, 0)) {
@@ -520,7 +556,7 @@ AotCbtHookThread(
       DispatchMessage(&msg);
       if (WM_AOTEXIT == msg.message) break;
     }
-    UnsetCbtHook();
+
     return EXIT_SUCCESS;
   }
 
@@ -601,6 +637,26 @@ CreateConsole(
 
 #ifdef _WINDLL
 
+static
+CFORCEINLINE
+VOID
+CALLBACK
+Watchdog(
+  VOID)
+{
+  HANDLE hProcessId = OpenProcess(SYNCHRONIZE, FALSE, ARCH(dwAotProcessId));
+  if (hProcessId)
+  {
+    (void)WaitForSingleObject(hProcessId, INFINITE);
+    //FreeLibrary(ARCH(hCbtHookModule));
+    //FreeLibraryWhenCallbackReturns,
+//Sleep(100);
+    //FreeLibraryAndExitThread(ARCH(hCbtHookModule), EXIT_SUCCESS);
+  }
+  //FreeLibrary(ARCH(hCbtHookModule));
+  FreeLibraryAndExitThread(GetModuleHandle(_T("aot64.dll")), 0); //Update the refcount first
+}
+
 BOOL
 APIENTRY
 DllMain(
@@ -614,14 +670,29 @@ DllMain(
   {
   case DLL_PROCESS_ATTACH:
   {
+    if(!ARCH(dwAotProcessId))
+    {
+      ARCH(dwAotProcessId) = GetCurrentProcessId();
+    }
+    //else
+    //{
+    //  if(!CreateThread(
+    //       0,
+    //       0,
+    //       (LPTHREAD_START_ROUTINE)Watchdog,
+    //       NULL,
+    //       0,
+    //       0
+    //  ))
+    //  {
+    //    return FALSE;
+    //  }
+    //}
     ARCH(hCbtHookModule) = hModule;
-    DisableThreadLibraryCalls(hModule);
+    //DisableThreadLibraryCalls(hModule);
     break;
   }
-  case DLL_THREAD_ATTACH:
-  case DLL_THREAD_DETACH:
-  case DLL_PROCESS_DETACH:
-    break;
+  default: break;
   }
   return TRUE;
 }
@@ -691,5 +762,7 @@ _tmain(
       return EXIT_SUCCESS;
     }
   }
+  return EXIT_FAILURE;
 }
+
 #endif
