@@ -316,13 +316,27 @@ OnDestroy(
   LPAOTUSERDATA lpAotUserData = (LPAOTUSERDATA)GetWindowLongPtr(hWnd, GWLP_USERDATA);
   if (lpAotUserData)
   {
-    if (lpAotUserData->dwAotMouseHookThreadId)
-    {
-      PostThreadMessage(lpAotUserData->dwAotMouseHookThreadId, WM_AOTEXIT, 0, 0);
-    }
+
+    HANDLE hAotCbtHookThread   = NULL;
+    HANDLE hAotMouseHookThread = NULL;
+
     if (lpAotUserData->dwAotCbtHookThreadId)
     {
+      hAotCbtHookThread = OpenThread(SYNCHRONIZE, FALSE, lpAotUserData->dwAotCbtHookThreadId);
       PostThreadMessage(lpAotUserData->dwAotCbtHookThreadId, WM_AOTEXIT, 0, 0);
+    }
+    if (lpAotUserData->dwAotMouseHookThreadId)
+    {
+      hAotMouseHookThread = OpenThread(SYNCHRONIZE, FALSE, lpAotUserData->dwAotMouseHookThreadId);
+      PostThreadMessage(lpAotUserData->dwAotMouseHookThreadId, WM_AOTEXIT, 0, 0);
+    }
+    if (hAotCbtHookThread)
+    {
+      (void)WaitForSingleObject(hAotCbtHookThread, INFINITE);
+    }
+    if (hAotMouseHookThread)
+    {
+      (void) WaitForSingleObject(hAotMouseHookThread, INFINITE);
     }
     PostQuitMessage(0);
   }
@@ -350,6 +364,31 @@ LowLevelMouseProc(
 
 #ifdef _WINDLL
 
+static 
+CFORCEINLINE
+VOID
+CALLBACK
+Watchdog(LPVOID hWndHookMarshaller)
+{
+  DWORD dwProcessId = 0;
+  if (GetWindowThreadProcessId(*(HWND*)hWndHookMarshaller, &dwProcessId))
+  {
+    HANDLE hProcessId = OpenProcess(SYNCHRONIZE, FALSE, dwProcessId);
+    if (hProcessId)
+    {
+      (void) WaitForSingleObject(hProcessId, INFINITE);
+      if (ARCH(hCbtHook))
+      {
+        UnhookWindowsHookEx(ARCH(hCbtHook));
+        ARCH(hWndHookMarshaller) = NULL;
+        ARCH(hCbtHook) = NULL;
+      }
+      FreeLibrary((HMODULE)&__ImageBase);
+      //FreeLibraryAndExitThread((HMODULE)&__ImageBase, 0);
+    }
+  }
+}
+
 static
 CFORCEINLINE
 LRESULT
@@ -359,6 +398,15 @@ CBTProc(
   WPARAM wParam,
   LPARAM lParam)
 {
+  static BOOL init = TRUE;
+
+  if (init)
+  {
+    (void)CreateThread(0, 0, (LPTHREAD_START_ROUTINE)Watchdog, (LPVOID)&ARCH(hWndHookMarshaller), 0, 0);
+
+    init = FALSE;
+  }
+
   switch (nCode)
   {
   case HCBT_ACTIVATE:
