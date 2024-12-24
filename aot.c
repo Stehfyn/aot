@@ -646,10 +646,10 @@ CreateConsole(
         SetWindowPos(
           hWnd,
           NULL,
-#ifdef _M_X86
-          0,
-#else
+#ifdef _M_X64
           nWidth,
+#else
+          0,
 #endif
           mi.rcWork.bottom - nHeight,
           nWidth,

@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableDelayedExpansion
+setlocal enabledelayedexpansion
 cd "%~dp0"
 
 for /f "usebackq tokens=*" %%a in (`call "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -property installationPath`) do (
@@ -24,26 +24,31 @@ if exist "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" (
 	pushd %out%
 	mkdir bin
 
-	call :%%build_target%% x86 aot 3>&1 >nul
-	call :%%build_target%% x64 aot 3>&1 >nul
+	call :%%build_target%% aot x86 3>&1 >nul
+	call :%%build_target%% aot x64 3>&1 >nul
 	popd
 )
 
 if "%0" == ":%build_target%" (
-	echo Build Target %2-%1 @call:
-	call "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" %1
-	echo %1 dll
-	rmdir /s /q %1 2>nul
-	mkdir %1
-	pushd %1
-	cl %cflags% /D "_WINDLL" /LD %sources% /link /MACHINE:%1 %libs% /IMPLIB:%2%1.lib /OUT:%2%1.dll /ENTRY:DllMain
-	copy %2%1.dll ..\bin\%2%1.dll
-	echo %1 sentinel
-	cl %cflags% /D "_SENTINEL" /Tc %sources% %libs% %2%1.lib /link /MACHINE:%1 /OUT:%2%1-sentinel.exe
-	copy %2%1-sentinel.exe ..\bin\%2%1-sentinel.exe
-	echo %1 exe
-	cl %cflags% /Tc %sources% %libs% %2%1.lib /link /MACHINE:%1 /OUT:%2%1.exe
-	copy %2%1.exe ..\bin\%2%1.exe
+	echo Build Target %1-%2 @call:
+	call "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" %2
+	
+	rmdir /s /q %2 2>nul
+	mkdir %2
+	pushd %2
+
+	echo. && echo %2 dll
+	cl %cflags% /D "_WINDLL" /LD %sources% /link /MACHINE:%2 %libs% /IMPLIB:%1%2.lib /OUT:%1%2.dll /ENTRY:DllMain
+	copy %1%2.dll ..\bin\%1%2.dll
+
+	echo. && echo %2 sentinel 
+	cl %cflags% /D "_SENTINEL" /Tc %sources% %libs% %1%2.lib /link /MACHINE:%2 /OUT:%1%2-sentinel.exe
+	copy %1%2-sentinel.exe ..\bin\%1%2-sentinel.exe
+
+	echo. && echo %2 hook 
+	cl %cflags% /Tc %sources% %libs% %1%2.lib /link /MACHINE:%2 /OUT:%1%2.exe
+	copy %1%2.exe ..\bin\%1%2.exe
+
 	popd
 	
 )>&3
