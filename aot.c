@@ -11,7 +11,7 @@
 #include <shellscalingapi.h>
 #include <shlwapi.h>
 #include <commctrl.h>
-
+#include <psapi.h>
 EXTERN_C
 IMAGE_DOS_HEADER __ImageBase;
 
@@ -45,18 +45,18 @@ ALLOC_SEGMENT(SEGMENT, DWORD,     dwAotProcessId,     0);
 #define AOT_CLASS_NAME             (TEXT("AOTClass"))
 #define AOT_INSTANCE_MUTEX         (TEXT(STRINGIZE(ARCH(AOTInstanceMutex))))
 
-#define SYSCOMMAND(value)          (value & 0xFFF0)
-#define AOT_MENU_ALWAYS_ON_TOP     (0x69)
-#define AOT_MENU_EXIT              (0x69 + 1)
-#define SC_AOT                     (SYSCOMMAND(AOT_MENU_ALWAYS_ON_TOP))
-
 #define AOT_MENUTEXT_ALWAYS_ON_TOP (TEXT("Always On Top"))
 #define AOT_MENUTEXT_EXIT          (TEXT("Exit"))
+#define AOT_MENU_ALWAYS_ON_TOP     (0x69)
+#define AOT_MENU_EXIT              (0x69 + 1)
+#define SYSCOMMAND(value)          (value & 0xFFF0)
+#define SC_AOT                     (SYSCOMMAND(AOT_MENU_ALWAYS_ON_TOP))
 
 #define WM_AOTQUIT                 (WM_USER + 0x69)
 #define WM_AOTHOOKINIT             (WM_USER + 0x69 + 1)
 #define WM_AOTMOUSEHOOK            (WM_USER + 0x69 + 2)
 #define WM_AOTCBTHOOK              (WM_USER + 0x69 + 3)
+
 #define HANDLE_WM_AOTHOOKINIT(hWnd, wParam, lParam, fn) \
         ((fn)((hWnd), (AOTHOOKTHREAD)(wParam), (DWORD)(lParam)), 0L)
 
@@ -101,52 +101,6 @@ UnsetCbtHook(
 static
 CFORCEINLINE
 BOOL
-WINAPI
-LogWindowText(
-  HWND hWnd)
-{
-  if (hWnd)
-  {
-    TCHAR szText[256];
-    GetClassName(hWnd, szText, ARRAYSIZE(szText));
-    //GetWindowText(hWnd, szText, ARRAYSIZE(szText));
-    wprintf(L"%s\n", szText);
-    return TRUE;
-  }
-  return FALSE;
-}
-
-static CFORCEINLINE
-BOOL CALLBACK
-EnumWindowsCallback(
-  HWND   hwnd,
-  LPARAM lParam) {
-  char className[256];
-
-  // Get the class name of the window
-  if (GetClassNameA(hwnd, className, sizeof(className))) {
-    // Check if the class name matches the popup menu class (#32768)
-    if (strcmp(className, "#32768") == 0) {
-      *(HWND*)lParam = hwnd;
-      return FALSE; // Stop enumeration
-    }
-  }
-
-  return TRUE; // Continue enumeration
-}
-
-static CFORCEINLINE
-HWND WINAPI
-FindOpenMenuWindow(
-  VOID) {
-  HWND hWnd; // Reset the global handle
-  EnumWindows(EnumWindowsCallback, (LPARAM)(LONG_PTR)&hWnd); // Enumerate all top-level windows
-  return hWnd; // Return the found handle (if any)
-}
-
-static
-CFORCEINLINE
-BOOL
 CALLBACK
 OnNcCreate(
   HWND           hWnd,
@@ -165,7 +119,7 @@ OnNcCreate(
   }
   else
   {
-    printf("AOT already running\n");
+    _tprintf(_T("AOT already running\n"));
   }
 
   WaitForSingleObjectEx(hInstanceMutex, 1000, FALSE);
@@ -261,85 +215,19 @@ OnAotCbtHook(
   int  nCode,
   HWND hWnd2)
 {
-  static int i = 0;
   UNREFERENCED_PARAMETER(hWnd);
-  TCHAR szClassName[256];
 
+  TCHAR szClassName[256];
+  RtlSecureZeroMemory(szClassName, sizeof(szClassName));
   if(GetClassName(hWnd2, szClassName, ARRAYSIZE(szClassName)))
   {
-    
     TCHAR szName[256];
-    GetWindowText(hWnd2, szName, sizeof(szName));
-    _tprintf(_T("%d AotCbtHook %s\n%s\n%s\n"), i++, GetCbtMessageName(nCode), szName, szClassName);
-    if(GetKeyState(VK_LCONTROL) < 0)
+    RtlSecureZeroMemory(szName, sizeof(szName));
+    if(GetWindowText(hWnd2, szName, sizeof(szName)))
     {
-      POINT cursor = {0};
-      GetCursorPos(&cursor);
-
-      HMENU hPopupMenu = CreatePopupMenu();
-      AppendMenu(
-        hPopupMenu,
-        MF_BYPOSITION | MF_STRING,
-        AOT_MENU_ALWAYS_ON_TOP,
-        AOT_MENUTEXT_ALWAYS_ON_TOP
-      );
-
-      AppendMenu(hPopupMenu, MF_BYPOSITION | MF_STRING, AOT_MENU_EXIT, AOT_MENUTEXT_EXIT);
-      HWND  hWndForeground        = GetForegroundWindow();
-      DWORD windowThreadProcessId = GetWindowThreadProcessId(hWndForeground, (LPDWORD)0);
-      DWORD currentThreadId       = GetCurrentThreadId();
-      LogWindowText(hWndForeground);
-      AttachThreadInput(windowThreadProcessId, currentThreadId, TRUE);
-      LockSetForegroundWindow(LSFW_UNLOCK);
-      AllowSetForegroundWindow(ASFW_ANY);
-      SetForegroundWindow(hWnd);
-      LockSetForegroundWindow(LSFW_LOCK);
-      ShowWindow(hWnd, SW_SHOW);
-      AttachThreadInput(windowThreadProcessId, currentThreadId, FALSE);
-      //AttachThreadInput(currentThreadId, windowThreadProcessId, TRUE);
-      INT nMenuId = (INT)TrackPopupMenu(
-        hPopupMenu,
-        TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
-        cursor.x,
-        cursor.y - 80,
-        0,
-        hWnd,
-        NULL
-      );
-      LockSetForegroundWindow(LSFW_UNLOCK);
-      if (nMenuId)
-      {
-        switch (nMenuId)
-        {
-        case AOT_MENU_ALWAYS_ON_TOP:
-        {
-          DWORD exStyle = (DWORD)GetWindowLong(hWnd2, GWL_EXSTYLE);
-          (VOID)SetWindowPos(
-            hWnd2,
-            (exStyle & WS_EX_TOPMOST) ? HWND_NOTOPMOST : HWND_TOPMOST,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_FRAMECHANGED
-          );
-          break;
-        }
-        case AOT_MENU_EXIT:
-        {
-          LPAOTUSERDATA lpAot = (LPAOTUSERDATA)GetWindowLongPtr(hWnd, GWLP_USERDATA);
-          PostThreadMessage(lpAot->dwMouseHookThreadId, WM_AOTQUIT, 0, 0);
-          PostQuitMessage(0);
-          break;
-        }
-        }
-      }
-
-      DestroyMenu(hPopupMenu);
+      static INT i = 0;
+      _tprintf(_T("%d AotCbtHook %s\n%s\n%s\n"), i++, GetCbtMessageName(nCode), szName, szClassName);
     }
-    //if(!_tccmp(szClassName, _T("32768")))
-    //{
-    //}
   }
 }
 
@@ -418,73 +306,30 @@ LowLevelMouseProc(
 
 static 
 CFORCEINLINE
-VOID
+BOOL
 CALLBACK
 AppendSystemMenu(HWND hWnd)
 {
-  HMENU hSysMenu = GetSystemMenu(hWnd, FALSE);
+  HMENU hSysMenu = NULL;
+  GetSystemMenu(hWnd, TRUE);
+  hSysMenu = GetSystemMenu(hWnd, FALSE);
+  
   if(hSysMenu)
   {
     MENUITEMINFO mii;
     RtlSecureZeroMemory(&mii, sizeof(MENUITEMINFO));
     mii.cbSize = sizeof(MENUITEMINFO);
     mii.fMask  = MIIM_ID;
-    if (GetMenuItemInfo(hSysMenu, AOT_MENU_ALWAYS_ON_TOP, FALSE, &mii))
-      return;
-    AppendMenu(
-      hSysMenu,
-      MF_BYPOSITION | MF_STRING,
-      AOT_MENU_ALWAYS_ON_TOP,
-      AOT_MENUTEXT_ALWAYS_ON_TOP
-    );
-  }
-}
 
-static
-CFORCEINLINE
-VOID 
-CALLBACK
-Sentinel(LPVOID lpvHwnd) 
-{
-  UNREFERENCED_PARAMETER(lpvHwnd);
-  HANDLE hProcessId = OpenProcess(SYNCHRONIZE, FALSE, ARCH(dwAotProcessId));
-  if (hProcessId)
-  {
-    WaitForSingleObject(hProcessId, INFINITE);
+    if (!GetMenuItemInfo(hSysMenu, AOT_MENU_ALWAYS_ON_TOP, FALSE, &mii))
+      return AppendMenu(
+        hSysMenu,
+        MF_BYPOSITION | MF_STRING,
+        AOT_MENU_ALWAYS_ON_TOP,
+        AOT_MENUTEXT_ALWAYS_ON_TOP
+      );
   }
-  SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
-}
-
-static 
-CFORCEINLINE
-LRESULT
-CALLBACK
-Subclassproc(
-  HWND      hWnd,
-  UINT      uMsg,
-  WPARAM    wParam,
-  LPARAM    lParam,
-  UINT_PTR  uIdSubclass,
-  DWORD_PTR dwRefData)
-{
-  UNREFERENCED_PARAMETER(dwRefData);
-  switch (uMsg) {
-  case WM_INITMENUPOPUP:
-  {
-    //CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)Sentinel, NULL, 0, 0));
-    
-    AppendMenu(
-      (HMENU)wParam,
-      MF_BYPOSITION | MF_STRING,
-      AOT_MENU_ALWAYS_ON_TOP,
-      AOT_MENUTEXT_ALWAYS_ON_TOP
-    );
-  }
-  case WM_NCDESTROY:
-    RemoveWindowSubclass(hWnd, Subclassproc, uIdSubclass);
-  default:
-    return DefSubclassProc(hWnd, uMsg, wParam, lParam);
-  }
+  return FALSE;
 }
 
 static
@@ -523,44 +368,31 @@ CBTProc(
     default:
       break;
     }
-    
     break;
   }
-  //case HCBT_CREATEWND:
   case HCBT_ACTIVATE:
   {
     if (lParam)
     {
-      //HWND hwndInsertAfter = ((LPCBT_CREATEWND)lParam)->hwndInsertAfter;
       HWND hWndActive = ((LPCBTACTIVATESTRUCT)lParam)->hWndActive;
-      //if(hwndInsertAfter)
       if(hWndActive)
       {
-        //if(hwndInsertAfter == GetActiveWindow())
+        TCHAR szClassName[256];
+        GetClassName((HWND)wParam, szClassName, sizeof(szClassName));
+        if(_tccmp(szClassName, _T("#32768")))
         {
-          TCHAR szClassName[256];
-          GetClassName((HWND)wParam, szClassName, sizeof(szClassName));
-          if(_tccmp(szClassName, _T("#32768")))
-          {
-            //(void)GetSystemMenu((HWND)wParam, FALSE);
-            //SetWindowSubclass((HWND)wParam, Subclassproc, 0, (DWORD_PTR)GetCurrentProcessId());
-            //(void)GetSystemMenu((HWND)wParam, FALSE);
-            //HMENU hMenu = GetSystemMenu((HWND)wParam, FALSE);
-            AppendSystemMenu((HWND)wParam);
-
+          if(AppendSystemMenu((HWND)wParam))
             PostMessage(
               ARCH(hWndHookMarshaller),
               WM_AOTCBTHOOK,
               (WPARAM)(DWORD)nCode,
               (LPARAM)(LONG_PTR)wParam
             );
-          }
         }
       }
     }
     break;
   }
-  //case HCBT_ACTIVATE:
   case HCBT_CREATEWND:
   case HCBT_DESTROYWND:
   {
@@ -610,7 +442,6 @@ UnsetCbtHook(
     dwExitCode               = EXIT_SUCCESS;
   }
   return (BOOL)dwExitCode;
-  //FreeLibraryAndExitThread(ARCH(hCbtHookModule), dwExitCode);
 }
 
 
