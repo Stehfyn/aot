@@ -12,13 +12,15 @@
 #include <shlwapi.h>
 #include <commctrl.h>
 #include <psapi.h>
+#include <winternl.h>
+
 EXTERN_C
 IMAGE_DOS_HEADER __ImageBase;
 
 #ifdef _WINDLL
-#define AOTAPI        __declspec(dllexport)
-#else
-#define AOTAPI        __declspec(dllimport)
+#define AOTAPI __declspec(dllexport)
+#else          
+#define AOTAPI __declspec(dllimport)
 #endif
 
 #ifdef _M_X64
@@ -43,7 +45,7 @@ ALLOC_SEGMENT(SEGMENT, DWORD,     dwAotProcessId,     0);
 
 #define AOT_WINDOW_NAME            (TEXT("AOT"))
 #define AOT_CLASS_NAME             (TEXT("AOTClass"))
-#define AOT_INSTANCE_MUTEX         (TEXT(STRINGIZE(ARCH(AOTInstanceMutex))))
+#define AOT_INSTANCE_MUTEX         (TEXT("AOTInstanceMutex"SEGMENT))
 
 #define AOT_MENUTEXT_ALWAYS_ON_TOP (TEXT("Always On Top"))
 #define AOT_MENUTEXT_EXIT          (TEXT("Exit"))
@@ -95,6 +97,14 @@ AOTAPI
 BOOL
 __cdecl
 UnsetCbtHook(
+  VOID
+);
+
+EXTERN_C
+AOTAPI
+DWORD
+__cdecl
+GetAotProcessId(
   VOID
 );
 
@@ -444,6 +454,16 @@ UnsetCbtHook(
   return (BOOL)dwExitCode;
 }
 
+EXTERN_C
+AOTAPI
+DWORD
+__cdecl
+GetAotProcessId(
+  VOID
+)
+{
+  return ARCH(dwAotProcessId);
+}
 
 #endif
 
@@ -626,7 +646,11 @@ CreateConsole(
         SetWindowPos(
           hWnd,
           NULL,
+#ifdef _M_X86
           0,
+#else
+          nWidth,
+#endif
           mi.rcWork.bottom - nHeight,
           nWidth,
           nHeight,
@@ -642,27 +666,6 @@ CreateConsole(
 }
 
 #ifdef _WINDLL
-
-static
-CFORCEINLINE
-VOID
-CALLBACK
-Watchdog(
-  VOID)
-{
-  HANDLE hProcessId = OpenProcess(SYNCHRONIZE, FALSE, ARCH(dwAotProcessId));
-  if (hProcessId)
-  {
-    (void)WaitForSingleObject(hProcessId, INFINITE);
-    //FreeLibrary(ARCH(hCbtHookModule));
-    //FreeLibraryWhenCallbackReturns,
-//Sleep(100);
-    //FreeLibraryAndExitThread(ARCH(hCbtHookModule), EXIT_SUCCESS);
-  }
-  //FreeLibrary(GetModuleHandle(NULL));
-  //FreeLibraryAndExitThread(GetModuleHandle(_T("aotx64.dll")), 0); //Update the refcount first
-}
-
 BOOL
 APIENTRY
 DllMain(
@@ -686,14 +689,48 @@ DllMain(
   return TRUE;
 }
 #else
-
 int
 _tmain(
   void)
 {
+#ifdef _SENTINEL
+  DWORD dwExitCode = EXIT_FAILURE;
+  HANDLE hParentProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetAotProcessId());
+  if (hParentProcess)
+  {
+    INT nRealityChecks = 10000;
+    WaitForSingleObject(hParentProcess, INFINITE);
+    UnsetCbtHook();
+    // Wake up any bum ass services who still have an instance of our .dlls loaded
+    do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (0 <--nRealityChecks);
+    dwExitCode = EXIT_SUCCESS;
+  }
+  ExitProcess(dwExitCode);
+}
+#else
   AOTUSERDATA aot;
   WNDCLASSEX  wcx;
   HWND        hWnd;
+  CHAR        szSentinelPath[MAX_PATH];
+  STARTUPINFOA        si;
+  PROCESS_INFORMATION pi;
+  
+  RtlSecureZeroMemory(szSentinelPath, sizeof(szSentinelPath));
+  GetModuleFileNameA(NULL, szSentinelPath, sizeof(szSentinelPath));
+  PathRemoveExtensionA(szSentinelPath);
+  PathAppendA(szSentinelPath, "-sentinel.exe");
+
+  RtlSecureZeroMemory(&si, sizeof(STARTUPINFOA));
+  si.dwFlags     = STARTF_USESHOWWINDOW;
+  si.wShowWindow = SW_HIDE;
+
+  RtlSecureZeroMemory(&pi, sizeof(PROCESS_INFORMATION));
+  if(CreateProcessA(NULL, szSentinelPath, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
+  {
+    WaitForInputIdle(pi.hProcess, INFINITE);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+  }
 
   if(S_OK != SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE))
   {
@@ -754,5 +791,5 @@ _tmain(
   }
   return EXIT_FAILURE;
 }
-
+#endif
 #endif
