@@ -38,15 +38,19 @@ if "%0" == ":%build_target%" (
 	pushd %2
 
 	echo. && echo %2 dll
-	cl %cflags% /D "_WINDLL" /LD %sources% /link /MACHINE:%2 %libs% /IMPLIB:%1%2.lib /OUT:%1%2.dll /ENTRY:DllMain
+	cl %cflags% /D "_WINDLL" /D "_AOTHOOKDLL" /LD %sources% /link /MACHINE:%2 %libs% /IMPLIB:%1%2.lib /OUT:%1%2.dll /ENTRY:DllMain
 	copy %1%2.dll ..\bin\%1%2.dll
 
 	echo. && echo %2 sentinel 
 	cl %cflags% /D "_SENTINEL" /Tc %sources% %libs% %1%2.lib /link /MACHINE:%2 /OUT:%1%2-sentinel.exe
 	copy %1%2-sentinel.exe ..\bin\%1%2-sentinel.exe
 
+	echo. && echo %2 hook<-->host dll
+	cl %cflags% /D "_WINDLL" /D "_AOTHOSTDLL" /LD %sources% /link /MACHINE:%2 %libs% /IMPLIB:%1%2-instance.lib /OUT:%1%2-instance.dll /ENTRY:DllMain
+	copy %1%2-instance.dll ..\bin\%1%2-instance.dll
+
 	echo. && echo %2 hook 
-	cl %cflags% /Tc %sources% %libs% %1%2.lib /link /MACHINE:%2 /OUT:%1%2.exe
+	cl %cflags% /Tc %sources% %libs% %1%2.lib %1%2-instance.lib /link /MACHINE:%2 /OUT:%1%2.exe
 	copy %1%2.exe ..\bin\%1%2.exe
 
 	echo. && echo %2 resources
@@ -55,7 +59,7 @@ if "%0" == ":%build_target%" (
 	rc -d _RES aot.rc
 
 	echo. && echo %2 host 
-	cl %cflags% /D "_HOST" /Tc %sources% aot.res %libs% %1%2.lib /link /MACHINE:%2 /OUT:%1%2-host.exe
+	cl %cflags% /D "_HOST" /Tc %sources% aot.res %libs% %1%2-instance.lib /link /MACHINE:%2 /OUT:%1%2-host.exe
 	copy %1%2-host.exe ..\bin\%1%2-host.exe
 
 	popd

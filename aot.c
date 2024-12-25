@@ -32,7 +32,7 @@ AOTX64_SENTINEL_EXE RCDATA "aotx64-sentinel.exe"
 EXTERN_C
 IMAGE_DOS_HEADER __ImageBase;
 
-#ifdef _WINDLL
+#if defined _WINDLL
 #define AOTAPI __declspec(dllexport)
 #else          
 #define AOTAPI __declspec(dllimport)
@@ -48,14 +48,21 @@ IMAGE_DOS_HEADER __ImageBase;
 
 #define STRINGIZE(x) #x
 
-#ifdef _WINDLL
-#pragma section(SEGMENT, read, write, shared)
-#define ALLOC_SEGMENT(segment, type, identifier, assign)   \
-        __declspec(allocate(SEGMENT)) __declspec(selectany) type ARCH(identifier) = assign;
-ALLOC_SEGMENT(SEGMENT, HHOOK,     hCbtHook,           NULL);
-ALLOC_SEGMENT(SEGMENT, HINSTANCE, hCbtHookModule,     NULL);
-ALLOC_SEGMENT(SEGMENT, HWND,      hWndHookMarshaller, NULL);
-ALLOC_SEGMENT(SEGMENT, DWORD,     dwAotProcessId,     0);
+#if defined _WINDLL
+  #pragma section(SEGMENT, read, write, shared)
+
+  #define ALLOC_SEGMENT(segment, type, identifier, assignment)   \
+          __declspec(allocate(SEGMENT)) __declspec(selectany) type ARCH(identifier) = assignment;
+
+  #if defined   _AOTHOSTDLL
+    ALLOC_SEGMENT(SEGMENT, DWORD,     dwHostProcessId,    0);
+
+  #elif defined _AOTHOOKDLL
+    ALLOC_SEGMENT(SEGMENT, DWORD,     dwHookProcessId,    0);
+    ALLOC_SEGMENT(SEGMENT, HHOOK,     hCbtHook,           NULL);
+    ALLOC_SEGMENT(SEGMENT, HINSTANCE, hCbtHookModule,     NULL);
+    ALLOC_SEGMENT(SEGMENT, HWND,      hWndHookMarshaller, NULL);
+  #endif
 #endif
 
 #define AOT_WINDOW_NAME            (TEXT("AOT"))
@@ -122,6 +129,15 @@ __cdecl
 GetAotProcessId(
   VOID
 );
+
+EXTERN_C
+AOTAPI
+DWORD
+__cdecl
+GetHostProcessId(
+  VOID
+);
+
 
 static
 CFORCEINLINE
@@ -327,7 +343,7 @@ LowLevelMouseProc(
   }
 }
 
-#ifdef _WINDLL
+#ifdef _AOTHOOKDLL
 
 static 
 CFORCEINLINE
@@ -477,11 +493,23 @@ GetAotProcessId(
   VOID
 )
 {
-  return ARCH(dwAotProcessId);
+  return ARCH(dwHookProcessId);
 }
 
 #endif
 
+#ifdef _AOTHOSTDLL
+EXTERN_C
+AOTAPI
+DWORD
+__cdecl
+GetHostProcessId(
+  VOID)
+{
+  return ARCH(dwHostProcessId);
+}
+
+#endif
 static
 CFORCEINLINE
 LRESULT
@@ -680,7 +708,7 @@ CreateConsole(
   return FALSE;
 }
 
-#ifdef _WINDLL
+#if defined _WINDLL
 BOOL
 APIENTRY
 DllMain(
@@ -691,10 +719,15 @@ DllMain(
   UNREFERENCED_PARAMETER(hModule);
   UNREFERENCED_PARAMETER(lpReserved);
   switch (ul_reason_for_call) {
-  case DLL_PROCESS_ATTACH:
-  {
-    if(!ARCH(dwAotProcessId)) ARCH(dwAotProcessId) = GetCurrentProcessId();
+  case DLL_PROCESS_ATTACH: {
+#if defined   _AOTHOSTDLL
+    if (!ARCH(dwHostProcessId)) ARCH(dwHostProcessId) = GetCurrentProcessId();
+
+#elif defined _AOTHOOKDLL
+    if(!ARCH(dwHookProcessId)) ARCH(dwHookProcessId) = GetCurrentProcessId();
     ARCH(hCbtHookModule) = hModule;
+
+#endif
     DisableThreadLibraryCalls(hModule);
   }
   default:
@@ -757,32 +790,50 @@ UnloadResource(
     );
     return hFile;
 }
-
-int
-_tmain(
-  void)
+static
+CFORCEINLINE
+VOID
+CALLBACK
+Watchdog(
+  LPVOID dwProcessId)
+{
+  HANDLE hProcessId = OpenProcess(PROCESS_ALL_ACCESS, FALSE, (DWORD)(DWORD_PTR)dwProcessId);
+  if (hProcessId)
+  {
+    (void)WaitForSingleObject(hProcessId, INFINITE);
+  }
+  UnsetCbtHook();
+  SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
+  ExitProcess(0);
+}
+int _tmain(void)
 {
 #ifdef _HOST
+  if(GetHostProcessId())
+  {
+  CHAR    szPath    [MAX_PATH];
   HMODULE hModule   = GetModuleHandle(NULL);
+  GetModuleFileNameA(NULL, szPath, sizeof(szPath));
+  PathRemoveFileSpecA(szPath);
+  PathAppendA(szPath, "aotx64.exe");
   HANDLE  hDll      = UnloadResource(hModule, AOTX64_DLL,          _T("aotx64.dll"));
   HANDLE  hSentinel = UnloadResource(hModule, AOTX64_SENTINEL_EXE, _T("aotx64-sentinel.exe"));
   HANDLE  hExe      = UnloadResource(hModule, AOTX64_EXE,          _T("aotx64.exe"));
-  CHAR szPath[MAX_PATH];
+
   STARTUPINFOA        si;
   PROCESS_INFORMATION pi;
+  PROCESS_INFORMATION pi2;
 
   RtlSecureZeroMemory(szPath, sizeof(szPath));
-  GetModuleFileNameA(NULL, szPath, sizeof(szPath));
   printf("%s\n", szPath);
-  PathRemoveFileSpecA(szPath);
   printf("%s\n", szPath);
-  PathAppendA(szPath, "aotx64.exe");
   printf("%s\n", szPath);
 
   RtlSecureZeroMemory(&si, sizeof(STARTUPINFOA));
   si.dwFlags = STARTF_USESHOWWINDOW;
   si.wShowWindow = SW_HIDE;
   RtlSecureZeroMemory(&pi, sizeof(PROCESS_INFORMATION));
+  RtlSecureZeroMemory(&pi2, sizeof(PROCESS_INFORMATION));
   CloseHandle(hExe);
   CloseHandle(hSentinel);
   CloseHandle(hDll);
@@ -790,56 +841,48 @@ _tmain(
   {
     CloseHandle(pi.hThread);
   }
-else
-{
-  printf("lasterr %ld\n", GetLastError());
-}
-
-  WaitForSingleObject(pi.hProcess, INFINITE);
+  else
+  {
+    printf("lasterr %ld\n", GetLastError());
+  }
+  if (CreateProcessA(NULL, "aotx64-sentinel.exe", NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi2))
+  {
+    CloseHandle(pi.hThread);
+  }
+  HANDLE h[2] = {pi.hProcess, pi2.hProcess};
+  WaitForMultipleObjects(2, h, FALSE, INFINITE);
   CloseHandle(pi.hProcess);
-  do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (!DeleteFile(_T("aotx64.dll")));
-  do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (!DeleteFile(_T("aotx64-sentinel.exe")));
-  do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (!DeleteFile(_T("aotx64.exe")));
+  CloseHandle(pi2.hProcess);
+  }
   ExitProcess(0);
 }
 #elif defined _SENTINEL
   DWORD dwExitCode = EXIT_FAILURE;
-  HANDLE hParentProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetAotProcessId());
-  if (hParentProcess)
+  HANDLE hProcess  = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetAotProcessId());
+  if (hProcess)
   {
-    INT nRealityChecks = 10000;
-    WaitForSingleObject(hParentProcess, INFINITE);
+    INT nRealityChecks = 1000;
+    
+    if(GetCurrentProcessId() != GetAotProcessId())
+    {
+      WaitForSingleObject(hProcess, INFINITE);
+      dwExitCode = EXIT_SUCCESS;
+    }
+    WaitForSingleObject(hProcess, INFINITE);
     UnsetCbtHook();
     // Wake up any bum ass services who still have an instance of our .dlls loaded
-    do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (0 <--nRealityChecks);
-    dwExitCode = EXIT_SUCCESS;
+    do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (0 < --nRealityChecks);
+    CloseHandle(hProcess);
   }
   ExitProcess(dwExitCode);
 }
 #else
+  LPVOID dwSignal = (LPVOID)(DWORD_PTR)GetHostProcessId();
+  CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)Watchdog, dwSignal, 0, 0));
   AOTUSERDATA aot;
   WNDCLASSEX  wcx;
   HWND        hWnd;
-  CHAR        szSentinelPath[MAX_PATH];
-  STARTUPINFOA        si;
-  PROCESS_INFORMATION pi;
-  RtlSecureZeroMemory(szSentinelPath, sizeof(szSentinelPath));
-  GetModuleFileNameA(NULL, szSentinelPath, sizeof(szSentinelPath));
-  PathRemoveExtensionA(szSentinelPath);
-  PathAppendA(szSentinelPath, "-sentinel.exe");
-
-  RtlSecureZeroMemory(&si, sizeof(STARTUPINFOA));
-  si.dwFlags     = STARTF_USESHOWWINDOW;
-  si.wShowWindow = SW_HIDE;
-
-  RtlSecureZeroMemory(&pi, sizeof(PROCESS_INFORMATION));
-  if(CreateProcessA(NULL, "aotx64-sentinel.exe", NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi))
-  {
-    WaitForInputIdle(pi.hProcess, INFINITE);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-  }
-
+  
   if(S_OK != SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE))
   {
     return EXIT_FAILURE;
