@@ -49,6 +49,15 @@ if "%0" == ":%build_target%" (
 	cl %cflags% /Tc %sources% %libs% %1%2.lib /link /MACHINE:%2 /OUT:%1%2.exe
 	copy %1%2.exe ..\bin\%1%2.exe
 
+	echo. && echo %2 resources
+	copy ..\..\aot.c aot.c
+	copy aot.c aot.rc
+	rc -d _RES aot.rc
+
+	echo. && echo %2 host 
+	cl %cflags% /D "_HOST" /Tc %sources% aot.res %libs% %1%2.lib /link /MACHINE:%2 /OUT:%1%2-host.exe
+	copy %1%2-host.exe ..\bin\%1%2-host.exe
+
 	popd
 	
 )>&3

@@ -1,3 +1,18 @@
+//#define AOTX86_DLL 101
+//#define AOTX86_EXE 103
+//#define AOTX86_SENTINEL_EXE 105
+#define AOTX64_DLL 102
+#define AOTX64_EXE 104
+#define AOTX64_SENTINEL_EXE 106
+
+#ifdef _RES
+//AOTX86_DLL RCDATA "aotx86.dll"
+//AOTX86_EXE RCDATA "aotx86.exe"
+//AOTX86_SENTINEL_EXE RCDATA "aotx86-sentinel.exe"
+AOTX64_DLL RCDATA "aotx64.dll"
+AOTX64_EXE RCDATA "aotx64.exe"
+AOTX64_SENTINEL_EXE RCDATA "aotx64-sentinel.exe"
+#else
 #define _CRT_SECURE_NO_WARNINGS
 #define _CRT_DISABLE_PERFCRIT_LOCKS
 #include <stdio.h>
@@ -688,12 +703,106 @@ DllMain(
   }
   return TRUE;
 }
+
 #else
+static
+CFORCEINLINE HANDLE WINAPI
+UnloadResource(
+  HMODULE hModule, int szResource, TCHAR szName[])
+  {
+    HRSRC hResourceInfo = FindResource(hModule, MAKEINTRESOURCE(szResource), RT_RCDATA);
+    if (!hResourceInfo)
+    {
+      _tprintf(_T("FindResource Failed %ld"), GetLastError());
+      ExitProcess(1);
+    }
+    _tprintf(_T("FindResource Success\n"));
+    HGLOBAL hResourceData = LoadResource(hModule, hResourceInfo);
+    if (!hResourceData)
+    {
+      _tprintf(_T("LoadResource Failed %ld"), GetLastError());
+      ExitProcess(1);
+    }
+    _tprintf(_T("LoadResource Success\n"));
+    const void* pvResourceData = LockResource(hResourceData);
+    if (!pvResourceData)
+    {
+      _tprintf(_T("LockResource Failed %ld"), GetLastError());
+      ExitProcess(1);
+    }
+    _tprintf(_T("LockResource Success\n"));
+    DWORD dwResourceSize = SizeofResource(hModule, hResourceInfo);
+    if (!dwResourceSize)
+    {
+      _tprintf(_T("SizeofResource Failed %ld"), GetLastError());
+      ExitProcess(1);
+    }
+    _tprintf(_T("Embedded resource size: %zu, Bitch!\n"), (SIZE_T)dwResourceSize);
+    HANDLE hFile = CreateFile(
+      szName,                  // File name
+      GENERIC_WRITE,             // Desired access
+      FILE_SHARE_READ | FILE_SHARE_WRITE,                         // Share mode
+      NULL,                      // Security attributes
+      CREATE_ALWAYS,             // Create mode
+      FILE_ATTRIBUTE_NORMAL,     // File attributes
+      NULL                       // Template file
+    );
+    DWORD dwBytesWritten = 0;
+    WriteFile(
+      hFile,                     // File handle
+      pvResourceData,            // Buffer to write
+      dwResourceSize,            // Number of bytes to write
+      &dwBytesWritten,           // Number of bytes written
+      NULL                       // Overlapped (unused)
+    );
+    return hFile;
+}
+
 int
 _tmain(
   void)
 {
-#ifdef _SENTINEL
+#ifdef _HOST
+  HMODULE hModule   = GetModuleHandle(NULL);
+  HANDLE  hDll      = UnloadResource(hModule, AOTX64_DLL,          _T("aotx64.dll"));
+  HANDLE  hSentinel = UnloadResource(hModule, AOTX64_SENTINEL_EXE, _T("aotx64-sentinel.exe"));
+  HANDLE  hExe      = UnloadResource(hModule, AOTX64_EXE,          _T("aotx64.exe"));
+  CHAR szPath[MAX_PATH];
+  STARTUPINFOA        si;
+  PROCESS_INFORMATION pi;
+
+  RtlSecureZeroMemory(szPath, sizeof(szPath));
+  GetModuleFileNameA(NULL, szPath, sizeof(szPath));
+  printf("%s\n", szPath);
+  PathRemoveFileSpecA(szPath);
+  printf("%s\n", szPath);
+  PathAppendA(szPath, "aotx64.exe");
+  printf("%s\n", szPath);
+
+  RtlSecureZeroMemory(&si, sizeof(STARTUPINFOA));
+  si.dwFlags = STARTF_USESHOWWINDOW;
+  si.wShowWindow = SW_HIDE;
+  RtlSecureZeroMemory(&pi, sizeof(PROCESS_INFORMATION));
+  CloseHandle(hExe);
+  CloseHandle(hSentinel);
+  CloseHandle(hDll);
+  if (CreateProcessA(NULL, "aotx64.exe", NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
+  {
+    CloseHandle(pi.hThread);
+  }
+else
+{
+  printf("lasterr %ld\n", GetLastError());
+}
+
+  WaitForSingleObject(pi.hProcess, INFINITE);
+  CloseHandle(pi.hProcess);
+  do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (!DeleteFile(_T("aotx64.dll")));
+  do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (!DeleteFile(_T("aotx64-sentinel.exe")));
+  do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (!DeleteFile(_T("aotx64.exe")));
+  ExitProcess(0);
+}
+#elif defined _SENTINEL
   DWORD dwExitCode = EXIT_FAILURE;
   HANDLE hParentProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetAotProcessId());
   if (hParentProcess)
@@ -714,7 +823,6 @@ _tmain(
   CHAR        szSentinelPath[MAX_PATH];
   STARTUPINFOA        si;
   PROCESS_INFORMATION pi;
-  
   RtlSecureZeroMemory(szSentinelPath, sizeof(szSentinelPath));
   GetModuleFileNameA(NULL, szSentinelPath, sizeof(szSentinelPath));
   PathRemoveExtensionA(szSentinelPath);
@@ -725,7 +833,7 @@ _tmain(
   si.wShowWindow = SW_HIDE;
 
   RtlSecureZeroMemory(&pi, sizeof(PROCESS_INFORMATION));
-  if(CreateProcessA(NULL, szSentinelPath, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
+  if(CreateProcessA(NULL, "aotx64-sentinel.exe", NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi))
   {
     WaitForInputIdle(pi.hProcess, INFINITE);
     CloseHandle(pi.hProcess);
@@ -791,5 +899,6 @@ _tmain(
   }
   return EXIT_FAILURE;
 }
+#endif
 #endif
 #endif
