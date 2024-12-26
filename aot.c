@@ -815,6 +815,7 @@ Killcord(
     }
     UnsetCbtHook();
     SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
+    CloseHandle(hProcessId);
     ExitProcess(0);
 }
 
@@ -895,9 +896,10 @@ _tmain(
     WNDCLASSEX  wcex;
     HWND        hWnd;
     UINT        uExitCode  = EXIT_FAILURE;
-    LPVOID      dwCatalyst = (LPVOID)(DWORD_PTR)GetHostProcessId();
 
-    if(!CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)Killcord, dwCatalyst, 0, 0)))
+    if(!CloseHandle(
+          CreateThread(
+            0, 0, (LPTHREAD_START_ROUTINE)Killcord, (LPVOID)(DWORD_PTR)GetHostProcessId(), 0, 0)))
       ExitProcess(uExitCode);
 
     RtlSecureZeroMemory(&wcex, sizeof(WNDCLASSEX));
