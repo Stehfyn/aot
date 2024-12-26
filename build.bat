@@ -14,7 +14,7 @@ if not defined VSINSTALLPATH (
 set out=out
 set sources=..\..\aot.c
 set cflags=/nologo /O2 /Oi /MD /std:c11 /Wall /WX /wd4702 /wd5045 /wd4710 /wd4191 /wd4820 /D _NDEBUG /D UNICODE /D _UNICODE
-set libs=user32.lib comctl32.lib shcore.lib ntdll.lib Kernel32.lib vcruntime.lib ucrt.lib Shlwapi.lib Comctl32.lib
+set libs=user32.lib comctl32.lib ntdll.lib Kernel32.lib vcruntime.lib ucrt.lib Shlwapi.lib Comctl32.lib
 
 set "build_target=/?"
 
@@ -55,6 +55,7 @@ if "%0" == ":%build_target%" (
 
 	echo. && echo %2 resources
 	copy ..\..\aot.c aot.c
+	copy ..\..\aot.exe.manifest aot.exe.manifest
 	copy aot.c aot.rc
 	rc -d _RES aot.rc
 
