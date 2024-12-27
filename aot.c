@@ -5,11 +5,13 @@
 //#define AOTX86_DLL 101
 //#define AOTX86_EXE 103
 //#define AOTX86_SENTINEL_EXE 105
-#define AOTX64_EXE_MANIFEST (1)
-#define AOTX64_DLL          (102)
-#define AOTX64_EXE          (104)
-#define AOTX64_SENTINEL_EXE (106)
-
+#define AOTX64_EXE_MANIFEST      (1)
+#define AOTX64_DLL_DATA          (101)
+#define AOTX64_EXE_DATA          (102)
+#define AOTX64_SENTINEL_EXE_DATA (103)
+#define AOTX64_DLL               "aotx64.dll"
+#define AOTX64_EXE               "aotx64.exe"
+#define AOTX64_SENTINEL_EXE      "aotx64-sentinel.exe"
 // -----------------------------------------------------
 // aot-hook.rc : Definitions
 // -----------------------------------------------------
@@ -17,10 +19,10 @@
 //AOTX86_DLL RCDATA "aotx86.dll"
 //AOTX86_EXE RCDATA "aotx86.exe"
 //AOTX86_SENTINEL_EXE RCDATA "aotx86-sentinel.exe"
-AOTX64_EXE_MANIFEST RT_MANIFEST     "aot.exe.manifest"
-AOTX64_DLL          RCDATA          "aotx64.dll"
-AOTX64_EXE          RCDATA          "aotx64.exe"
-AOTX64_SENTINEL_EXE RCDATA          "aotx64-sentinel.exe"
+AOTX64_EXE_MANIFEST      RT_MANIFEST     "aot.exe.manifest"
+AOTX64_DLL_DATA          RCDATA          AOTX64_DLL
+AOTX64_EXE_DATA          RCDATA          AOTX64_EXE
+AOTX64_SENTINEL_EXE_DATA RCDATA          AOTX64_SENTINEL_EXE
 #else
 #define _CRT_SECURE_NO_WARNINGS
 #define _CRT_DISABLE_PERFCRIT_LOCKS
@@ -753,8 +755,8 @@ static
 HANDLE CFORCEINLINE APIPRIVATE
 UnloadResource(
     HMODULE hModule, 
-    int nResourceId, 
-    TCHAR szName[])
+    UINT    nResourceId, 
+    TCHAR   szName[])
 {
     HANDLE hOut = NULL;
     HRSRC hResourceInfo = FindResource(hModule, MAKEINTRESOURCE(nResourceId), RT_RCDATA);
@@ -831,9 +833,9 @@ _tmain(
       GetModuleFileNameA(NULL, szPath, sizeof(szPath));
       PathRemoveFileSpecA(szPath);
       PathAppendA(szPath, "aotx64.exe");
-      HANDLE  hDll      = UnloadResource(hModule, AOTX64_DLL,          _T("aotx64.dll"));
-      HANDLE  hSentinel = UnloadResource(hModule, AOTX64_SENTINEL_EXE, _T("aotx64-sentinel.exe"));
-      HANDLE  hExe      = UnloadResource(hModule, AOTX64_EXE,          _T("aotx64.exe"));
+      HANDLE  hDll      = UnloadResource(hModule, AOTX64_DLL_DATA,          _T(AOTX64_DLL));
+      HANDLE  hSentinel = UnloadResource(hModule, AOTX64_SENTINEL_EXE_DATA, _T(AOTX64_SENTINEL_EXE));
+      HANDLE  hExe      = UnloadResource(hModule, AOTX64_EXE_DATA,          _T(AOTX64_EXE));
 
       STARTUPINFOA        si;
       PROCESS_INFORMATION pi;

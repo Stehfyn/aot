@@ -13,18 +13,18 @@ if not defined VSINSTALLPATH (
 
 set out=out
 set sources=..\..\aot.c
-set cflags=/nologo /O2 /Oi /MD /std:c11 /Wall /WX /wd4702 /wd5045 /wd4710 /wd4191 /wd4820 /D _NDEBUG /D UNICODE /D _UNICODE
-set libs=user32.lib comctl32.lib ntdll.lib Kernel32.lib vcruntime.lib ucrt.lib Shlwapi.lib Comctl32.lib
+set cflags=/nologo /O2 /Oi /MT /std:c11 /Wall /WX /wd4702 /wd5045 /wd4710 /wd4191 /wd4820 /D _NDEBUG /D UNICODE /D _UNICODE
+set libs=user32.lib comctl32.lib ntdll.lib Kernel32.lib libcmt.lib Shlwapi.lib Comctl32.lib
 
 set "build_target=/?"
 
+	::call :%%build_target%% aot x86 3>&1 >nul
 if exist "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" (
 	rmdir /s /q %out%
 	mkdir %out%
 	pushd %out%
 	mkdir bin
 
-	call :%%build_target%% aot x86 3>&1 >nul
 	call :%%build_target%% aot x64 3>&1 >nul
 	popd
 )
