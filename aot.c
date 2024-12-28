@@ -1,28 +1,35 @@
 // -----------------------------------------------------
 // resource.h : Definitions
 // -----------------------------------------------------
+#define AOT_HOOK_EXE_MANIFEST 1
+#define AOT_HOOK_DLL_DATA     101
+#define AOT_HOOK_EXE_DATA     102
+#define AOT_HOST_DLL_DATA     103
+#define AOT_X86HOST_EXE_DATA  104
+#define AOT_X64HOST_EXE_DATA  105
+#define AOT_HOOK_DLL          "aot-hook.dll"
+#define AOT_HOOK_EXE          "aot-hook.exe"
+#define AOT_HOST_DLL          "aot-host.dll"
+#define AOT_X86HOST_EXE       "aotx86-host.exe"
+#define AOT_X64HOST_EXE       "aotx64-host.exe"
 
-//#define AOTX86_DLL 101
-//#define AOTX86_EXE 103
-//#define AOTX86_SENTINEL_EXE 105
-#define AOTX64_EXE_MANIFEST      (1)
-#define AOTX64_DLL_DATA          (101)
-#define AOTX64_EXE_DATA          (102)
-#define AOTX64_SENTINEL_EXE_DATA (103)
-#define AOTX64_DLL               "aotx64.dll"
-#define AOTX64_EXE               "aotx64.exe"
-#define AOTX64_SENTINEL_EXE      "aotx64-sentinel.exe"
 // -----------------------------------------------------
-// aot-hook.rc : Definitions
+// aot-host.rc : Definitions
 // -----------------------------------------------------
-#ifdef _RES
-//AOTX86_DLL RCDATA "aotx86.dll"
-//AOTX86_EXE RCDATA "aotx86.exe"
-//AOTX86_SENTINEL_EXE RCDATA "aotx86-sentinel.exe"
-AOTX64_EXE_MANIFEST      RT_MANIFEST     "aot.exe.manifest"
-AOTX64_DLL_DATA          RCDATA          AOTX64_DLL
-AOTX64_EXE_DATA          RCDATA          AOTX64_EXE
-AOTX64_SENTINEL_EXE_DATA RCDATA          AOTX64_SENTINEL_EXE
+#if   (defined _HOSTRES)
+AOT_EXE_MANIFEST      RT_MANIFEST     "aot.exe.manifest"
+AOT_HOOK_DLL_DATA     RCDATA          AOT_HOOK_DLL
+AOT_HOOK_EXE_DATA     RCDATA          AOT_HOOK_EXE
+AOT_HOST_DLL_DATA     RCDATA          AOT_HOST_DLL
+
+// -----------------------------------------------------
+// aot-release.rc : Definitions
+// -----------------------------------------------------
+#elif (defined _RELRES)
+AOT_EXE_MANIFEST      RT_MANIFEST     "aot.exe.manifest"
+AOT_X86HOST_EXE_DATA  RCDATA          AOT_X86HOST_EXE
+AOT_X64HOST_EXE_DATA  RCDATA          AOT_X64HOST_EXE
+
 #else
 #define _CRT_SECURE_NO_WARNINGS
 #define _CRT_DISABLE_PERFCRIT_LOCKS
@@ -103,57 +110,28 @@ GetHookProcessId(
 #define AOT_INSTANCE_MUTEX         (TEXT("AOTInstanceMutex"SEGMENT))
 
 #define AOT_MENUTEXT_ALWAYS_ON_TOP (TEXT("Always On Top"))
-#define AOT_MENUTEXT_EXIT          (TEXT("Exit"))
 #define AOT_MENU_ALWAYS_ON_TOP     (0x69)
-#define AOT_MENU_EXIT              (0x69 + 1)
 #define SYSCOMMAND(value)          (value & 0xFFF0)
 #define SC_AOT                     (SYSCOMMAND(AOT_MENU_ALWAYS_ON_TOP))
 
 #define WM_AOTQUIT                 (WM_USER + 0x69)
 #define WM_AOTHOOKINIT             (WM_USER + 0x69 + 1)
-#define WM_AOTMOUSEHOOK            (WM_USER + 0x69 + 2)
-#define WM_AOTCBTHOOK              (WM_USER + 0x69 + 3)
 
 #define HANDLE_WM_AOTHOOKINIT(hWnd, wParam, lParam, fn) \
         ((fn)((hWnd), (AOTHOOKTHREAD)(wParam), (DWORD)(lParam)), 0L)
 
-#define HANDLE_WM_AOTMOUSEHOOK(hWnd, wParam, lParam, fn) \
-        ((fn)((hWnd), (LONG)(wParam), MAKEPOINTS((lParam))), 0L)
-
-#define HANDLE_WM_AOTCBTHOOK(hWnd, wParam, lParam, fn) \
-        ((fn)((hWnd), (INT)(DWORD)(wParam), (HWND)(LONG_PTR)(lParam)), 0L)
-
-__declspec(align(16)) typedef struct _AOTUSERDATA {
-  DWORD dwMouseHookThreadId;
+//__declspec(align(16)) 
+typedef struct _AOTUSERDATA {
   DWORD dwCbtHookThreadId;
   BOOL  fAlwaysOnTop;
-#if   (defined __x86_64__) || (defined _M_X64)
+#if   (defined __i386__) || (defined _M_IX86)
   __declspec(align(4)) unsigned __int8 reserved[4];
 #endif
 } AOTUSERDATA, * LPAOTUSERDATA;
 
 typedef enum _AOTHOOKTHREAD {
-  AOTMOUSEHOOKTHREAD,
   AOTCBTHOOKTHREAD,
 } AOTHOOKTHREAD;
-
-static
-LPTSTR CFORCEINLINE APIPRIVATE
-CbtHookCodeToString(
-  int nCode)
-{
-#define HCBT_HC2STR(x) \
-    case x:            \
-        return _T(#x);
-    switch (nCode) {
-    HCBT_HC2STR(HCBT_ACTIVATE)
-    HCBT_HC2STR(HCBT_CREATEWND)
-    HCBT_HC2STR(HCBT_DESTROYWND)
-    HCBT_HC2STR(HCBT_SYSCOMMAND)
-    DEFAULT_UNREACHABLE;
-    }
-#undef HCBT_HC2STR
-}
 
 static
 BOOL CFORCEINLINE CALLBACK
@@ -190,101 +168,18 @@ OnAotInit(
 {
     LPAOTUSERDATA lpAotUserData = (LPAOTUSERDATA)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 
-    switch (dwHookThread) {
-    case AOTMOUSEHOOKTHREAD: 
-      //wprintf(L"AotMouseHookThreadInit %ld\n", dwAotHookThreadId);
-      lpAotUserData->dwMouseHookThreadId = dwAotHookThreadId;
-      break;
-    case AOTCBTHOOKTHREAD:
-      //wprintf(L"AotCbtHookThreadInit %ld\n", dwAotHookThreadId);
-      lpAotUserData->dwCbtHookThreadId = dwAotHookThreadId;
-      break;
-    DEFAULT_UNREACHABLE;
-    }
-}
-
-static 
-CFORCEINLINE VOID CALLBACK
-OnAotMouseHook(
-    HWND   hWnd,
-    LONG  mouseData,
-    POINTS pts)
-{
-    UNREFERENCED_PARAMETER(hWnd);
-    UNREFERENCED_PARAMETER(mouseData);
-    static BOOL nc = 0;
-    static POINT pt = {0};
-    static HWND hwndHovered = 0;
-
-    if(!mouseData)
+    if(lpAotUserData)
     {
-      RtlSecureZeroMemory(&pt, sizeof(POINT));
-      POINTSTOPOINT(pt, MAKEPOINTS(pts));
-
-      RtlSecureZeroMemory(&hwndHovered, sizeof(HWND));
-      hwndHovered = WindowFromPoint(pt);
-      if(hwndHovered)
-      {
-        LRESULT result = SendMessage(hwndHovered, WM_NCHITTEST, 0, MAKELPARAM(pt.x, pt.y));
-        nc = result == HTCAPTION;
+      switch (dwHookThread) {
+      case AOTCBTHOOKTHREAD:
+        lpAotUserData->dwCbtHookThreadId = dwAotHookThreadId;
+        return;
+      DEFAULT_UNREACHABLE;
       }
     }
-    else
-    {
-      if(hwndHovered)
-      {
-        DWORD exStyle = (DWORD)GetWindowLongPtr(hwndHovered, GWL_EXSTYLE);
-        if(!(exStyle & WS_EX_LAYERED))
-        {
-          SetWindowLongPtr(hwndHovered, GWL_EXSTYLE, exStyle | WS_EX_LAYERED);
-        }
-        static int div = 10;
-        if(mouseData > 0)
-        {
-          if (div != 1)
-            div -= 1;
-        }
-        else if(mouseData < 0)
-        {
-          if(div != 10)
-            div += 1;
-        }
-        SetLayeredWindowAttributes(hwndHovered, 0, (BYTE)180, LWA_ALPHA);
-        _tprintf(_T("yuh: %ld\n"), mouseData);
-      }
-      //TCHAR   szClassName[256];
-      //RtlSecureZeroMemory(szClassName, sizeof(szClassName));
-      //if(GetClassName(hwndHovered, szClassName, sizeof(szClassName)))
-      //{
-      //  TCHAR szWindowText[256];
-      //  RtlSecureZeroMemory(szWindowText, sizeof(szWindowText));
-      //  GetWindowText(hwndHovered, szWindowText, sizeof(szWindowText));
-      //  //wprintf(L"%ld %ld HT: %ld: | %s %s\n", pt.x, pt.y, (LONG)result, szWindowText, szClassName);
-      //}
-    }
-}
-
-static
-VOID CFORCEINLINE CALLBACK
-OnAotCbtHook(
-    HWND hWnd,
-    int  nCode,
-    HWND hWnd2)
-{
-    UNREFERENCED_PARAMETER(hWnd);
-
-    TCHAR szClassName[256];
-    RtlSecureZeroMemory(szClassName, sizeof(szClassName));
-    if(GetClassName(hWnd2, szClassName, ARRAYSIZE(szClassName)))
-    {
-      TCHAR szName[256];
-      RtlSecureZeroMemory(szName, sizeof(szName));
-      if(GetWindowText(hWnd2, szName, sizeof(szName)))
-      {
-        static INT i = 0;
-        _tprintf(_T("%d AotCbtHook %s\n%s\n%s\n"), i++, CbtHookCodeToString(nCode), szName, szClassName);
-      }
-    }
+    
+    UnsetCbtHook();
+    CloseWindow(hWnd);
 }
 
 static
@@ -302,30 +197,22 @@ OnDestroy(
     HWND hWnd)
 {
     LPAOTUSERDATA lpAotUserData = (LPAOTUSERDATA)GetWindowLongPtr(hWnd, GWLP_USERDATA);
-    UnsetCbtHook();
-    SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
 
-    if (lpAotUserData->dwCbtHookThreadId)
+    if(lpAotUserData)
     {
-      HANDLE hCbtHookThread = OpenThread(SYNCHRONIZE, FALSE, lpAotUserData->dwCbtHookThreadId);
-      PostThreadMessage(lpAotUserData->dwCbtHookThreadId, WM_AOTQUIT, 0, 0);
+      UnsetCbtHook();
+      SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
 
-      if (hCbtHookThread)
+      if (lpAotUserData->dwCbtHookThreadId)
       {
-        WaitForSingleObject(hCbtHookThread, INFINITE);
-        CloseHandle(hCbtHookThread);
-      }
-    }
+        HANDLE hCbtHookThread = OpenThread(SYNCHRONIZE, FALSE, lpAotUserData->dwCbtHookThreadId);
+        PostThreadMessage(lpAotUserData->dwCbtHookThreadId, WM_AOTQUIT, 0, 0);
 
-    if (lpAotUserData->dwMouseHookThreadId)
-    {
-      HANDLE hMouseHookThread = OpenThread(SYNCHRONIZE, FALSE, lpAotUserData->dwMouseHookThreadId);
-      PostThreadMessage(lpAotUserData->dwMouseHookThreadId, WM_AOTQUIT, 0, 0);
-
-      if (hMouseHookThread)
-      {
-        WaitForSingleObject(hMouseHookThread, INFINITE);
-        CloseHandle(hMouseHookThread);
+        if (hCbtHookThread)
+        {
+          WaitForSingleObject(hCbtHookThread, INFINITE);
+          CloseHandle(hCbtHookThread);
+        }
       }
     }
 
@@ -343,80 +230,10 @@ AotWndProc(
     switch (message) {
     HANDLE_MSG(hWnd, WM_NCCREATE,     OnNcCreate);
     HANDLE_MSG(hWnd, WM_AOTHOOKINIT,  OnAotInit);
-    HANDLE_MSG(hWnd, WM_AOTMOUSEHOOK, OnAotMouseHook);
-    HANDLE_MSG(hWnd, WM_AOTCBTHOOK,   OnAotCbtHook);
     HANDLE_MSG(hWnd, WM_CLOSE,        OnClose);
     HANDLE_MSG(hWnd, WM_DESTROY,      OnDestroy);
     }
     return DefWindowProc(hWnd, message, wParam, lParam);
-}
-
-static
-LRESULT CFORCEINLINE CALLBACK
-LowLevelMouseProc(
-    int    nCode,
-    WPARAM wParam,
-    LPARAM lParam)
-{
-    switch (wParam) {
-    case WM_MOUSEWHEEL:
-    case WM_MOUSEMOVE:
-      PostThreadMessage(
-        GetCurrentThreadId(),
-        WM_AOTMOUSEHOOK,
-        (WPARAM)(LONG)HIWORD(((LPMSLLHOOKSTRUCT)lParam)->mouseData),
-        (LPARAM)(DWORD)POINTTOPOINTS(((LPMSLLHOOKSTRUCT)lParam)->pt)
-      );
-    default:
-      return CallNextHookEx(NULL, nCode, wParam, lParam);
-    }
-}
-
-static
-VOID CFORCEINLINE APIPRIVATE
-MouseHookThread(
-    LPVOID lpvhWnd)
-{
-    DWORD dwExitCode = EXIT_FAILURE;
-    HHOOK hook       = SetWindowsHookEx(
-      WH_MOUSE_LL,
-      LowLevelMouseProc,
-      (HINSTANCE)&__ImageBase,
-      0
-    );
-
-    if (hook)
-    {
-      MSG msg;
-
-      PostMessage(
-        *(HWND*)lpvhWnd,
-        WM_AOTHOOKINIT,
-        (WPARAM)(DWORD)AOTMOUSEHOOKTHREAD,
-        (LPARAM)(DWORD)GetCurrentThreadId()
-      );
-
-      RtlSecureZeroMemory(&msg, sizeof(MSG));
-      while (GetMessage(&msg, NULL, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-
-        switch (msg.message) {
-        case WM_QUIT:
-        case WM_AOTQUIT:
-          UnhookWindowsHookEx(hook);
-          SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
-          break;
-        case WM_AOTMOUSEHOOK:
-          PostMessage(*(HWND*)lpvhWnd, msg.message, msg.wParam, msg.lParam);
-        default:
-          continue;
-        }
-        break;
-      }
-      dwExitCode = EXIT_SUCCESS;
-    }
-    ExitThread(dwExitCode);
 }
 
 static
@@ -505,7 +322,7 @@ CBTProc(
       {
         HWND  hWnd    = GetForegroundWindow();
         DWORD exStyle = (DWORD)GetWindowLong(hWnd, GWL_EXSTYLE);
-        (VOID)SetWindowPos(
+        SetWindowPos(
           hWnd,
           (exStyle & WS_EX_TOPMOST) ? HWND_NOTOPMOST : HWND_TOPMOST,
           0,
@@ -513,12 +330,6 @@ CBTProc(
           0,
           0,
           SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW|SWP_FRAMECHANGED
-        );
-        PostMessage(
-          ARCH(hWndHookMarshaller),
-          WM_AOTCBTHOOK,
-          (WPARAM)(DWORD)nCode,
-          (LPARAM)(LONG_PTR)hWnd
         );
       }
       default:
@@ -537,27 +348,11 @@ CBTProc(
           GetClassName((HWND)wParam, szClassName, sizeof(szClassName));
           if(_tccmp(szClassName, _T("#32768")))
           {
-            if(AppendSystemMenu((HWND)wParam))
-              PostMessage(
-                ARCH(hWndHookMarshaller),
-                WM_AOTCBTHOOK,
-                (WPARAM)(DWORD)nCode,
-                (LPARAM)(LONG_PTR)wParam
-              );
+            AppendSystemMenu((HWND)wParam);
           }
         }
       }
       break;
-    }
-    case HCBT_CREATEWND:
-    case HCBT_DESTROYWND:
-    {
-      PostMessage(
-        ARCH(hWndHookMarshaller),
-        WM_AOTCBTHOOK,
-        (WPARAM)(DWORD)nCode,
-        (LPARAM)(LONG_PTR)wParam
-      );
     }
     default:
       break;
@@ -629,94 +424,6 @@ GetHostProcessId(
 }
 
 #endif
-
-static 
-CFORCEINLINE BOOL WINAPI
-HandlerRoutine(
-  DWORD dwCtrlType)
-{
-  UNREFERENCED_PARAMETER(dwCtrlType);
-  UnsetCbtHook();
-  return TRUE;
-}
-
-static
-CFORCEINLINE BOOL WINAPI
-CreateConsole(
-  INT nWidth,
-  INT nHeight)
-{
-  if (!FreeConsole())
-  {
-    return FALSE;
-  }
-  if (!AllocConsole())
-  {
-    return FALSE;
-  }
-  //if(!SetConsoleCtrlHandler((PHANDLER_ROUTINE)HandlerRoutine, TRUE))
-  //{
-  //  return FALSE;
-  //}
-  if (!SetConsoleTitle(_T("AOT Console")))
-  {
-    return FALSE;
-  }
-  if (!SetConsoleCP(CP_UTF8))
-  {
-    return FALSE;
-  }
-  if (!SetConsoleOutputCP(CP_UTF8))
-  {
-    return FALSE;
-  }
-  if (!SetConsoleMode(
-        GetStdHandle(STD_INPUT_HANDLE),
-        ENABLE_QUICK_EDIT_MODE | ENABLE_EXTENDED_FLAGS
-  ))
-  {
-    return FALSE;
-  }
-  if (!SetConsoleMode(
-        GetStdHandle(STD_OUTPUT_HANDLE),
-        ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT
-  ))
-  {
-    return FALSE;
-  }
-  if (SetConsoleMode(
-        GetStdHandle(STD_ERROR_HANDLE),
-        ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT
-  ))
-  {
-    HWND hWnd = GetConsoleWindow();
-    if (hWnd)
-    {
-      MONITORINFO mi = { sizeof(mi) };
-      if (GetMonitorInfo(MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST), &mi))
-      {
-        AnimateWindow(hWnd, 0, AW_HIDE | AW_SLIDE);
-        SetWindowPos(
-          hWnd,
-          NULL,
-#ifdef _M_X64
-          nWidth,
-#else
-          0,
-#endif
-          mi.rcWork.bottom - nHeight,
-          nWidth,
-          nHeight,
-          SWP_NOZORDER | SWP_NOACTIVATE
-        );
-        AnimateWindow(hWnd, 150, AW_ACTIVATE | AW_SLIDE);
-        SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-      }
-    }
-    return TRUE;
-  }
-  return FALSE;
-}
 
 #if defined _WINDLL
 
@@ -815,31 +522,81 @@ Killcord(
     {
       WaitForSingleObject(hProcessId, INFINITE);
     }
-    UnsetCbtHook();
+    //UnsetCbtHook();
     SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
     CloseHandle(hProcessId);
     ExitProcess(0);
 }
-
+static
+VOID CFORCEINLINE APIPRIVATE
+Killcord2(
+  LPVOID dwProcessId)
+{
+  HANDLE hProcessId = OpenProcess(PROCESS_ALL_ACCESS, FALSE, (DWORD)(DWORD_PTR)dwProcessId);
+  if (hProcessId)
+  {
+    WaitForSingleObject(hProcessId, INFINITE);
+  }
+  SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
+  CloseHandle(hProcessId);
+  ExitProcess(0);
+}
 void
 _tmain(
     void)
 {
-#ifdef _HOST
-    if(GetHostProcessId())
+#ifdef _REL
+  HMODULE hModule = GetModuleHandle(NULL);
+  CreateDirectory(_T(".\\x86"), NULL);
+  CreateDirectory(_T(".\\x64"), NULL);
+  STARTUPINFOA        si = {0};
+  PROCESS_INFORMATION pi = {0};
+  SetCurrentDirectory(_T(".\\x86"));
+  HANDLE  x86Host = UnloadResource(hModule, AOT_X86HOST_EXE_DATA, _T(AOT_X86HOST_EXE));
+  CloseHandle(x86Host);
+  CreateProcessA(NULL, "aotx86-host", NULL, NULL, FALSE, CREATE_SUSPENDED | CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+  PROCESS_INFORMATION pi2 ={0};
+  SetCurrentDirectory(_T(".\\..\\x64"));
+  HANDLE  x64Host = UnloadResource(hModule, AOT_X64HOST_EXE_DATA, _T(AOT_X64HOST_EXE));
+  CloseHandle(x64Host);
+  CreateProcessA(NULL, "aotx64-host", NULL, NULL, FALSE, CREATE_SUSPENDED | CREATE_NO_WINDOW, NULL, NULL, &si, &pi2);
+  SetCurrentDirectory(_T(".\\.."));
+  HANDLE hJob = CreateJobObject(NULL, NULL);
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo = {};
+  jobInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+  if (!SetInformationJobObject(hJob, JobObjectExtendedLimitInformation, &jobInfo, sizeof(jobInfo))) {
+    CloseHandle(hJob);
+  }
+  AssignProcessToJobObject(hJob, pi.hProcess);
+  AssignProcessToJobObject(hJob, pi2.hProcess);
+  ResumeThread(pi.hThread);
+  ResumeThread(pi2.hThread);
+  if (!CloseHandle(
+    CreateThread(
+      0, 0, (LPTHREAD_START_ROUTINE)Killcord2, (LPVOID)(DWORD_PTR)pi.dwProcessId, 0, 0)))
+    ExitProcess(1);
+  if (!CloseHandle(
+    CreateThread(
+      0, 0, (LPTHREAD_START_ROUTINE)Killcord2, (LPVOID)(DWORD_PTR)pi2.dwProcessId, 0, 0)))
+    ExitProcess(1);
+  SuspendThread(GetCurrentThread());
+  ExitProcess(0);
+}
+#elif defined _HOST
+      HMODULE hModule   = GetModuleHandle(NULL);
+      HANDLE  hDllHost      = UnloadResource(hModule, AOT_HOST_DLL_DATA,          _T(AOT_HOST_DLL));
+      CloseHandle(hDllHost);
+      HMODULE hModHost = LoadLibrary(_T(AOT_HOST_DLL));
+    if(hModHost)
     {
       CHAR    szPath    [MAX_PATH];
-      HMODULE hModule   = GetModuleHandle(NULL);
       GetModuleFileNameA(NULL, szPath, sizeof(szPath));
       PathRemoveFileSpecA(szPath);
       PathAppendA(szPath, "aotx64.exe");
-      HANDLE  hDll      = UnloadResource(hModule, AOTX64_DLL_DATA,          _T(AOTX64_DLL));
-      HANDLE  hSentinel = UnloadResource(hModule, AOTX64_SENTINEL_EXE_DATA, _T(AOTX64_SENTINEL_EXE));
-      HANDLE  hExe      = UnloadResource(hModule, AOTX64_EXE_DATA,          _T(AOTX64_EXE));
-
+      HANDLE  hDll = UnloadResource(hModule, AOT_HOOK_DLL_DATA, _T(AOT_HOOK_DLL));
+      HANDLE  hExe = UnloadResource(hModule, AOT_HOOK_EXE_DATA, _T(AOT_HOOK_EXE));
       STARTUPINFOA        si;
       PROCESS_INFORMATION pi;
-      PROCESS_INFORMATION pi2;
 
       RtlSecureZeroMemory(szPath, sizeof(szPath));
       printf("%s\n", szPath);
@@ -850,11 +607,9 @@ _tmain(
       si.dwFlags = STARTF_USESHOWWINDOW;
       si.wShowWindow = SW_HIDE;
       RtlSecureZeroMemory(&pi, sizeof(PROCESS_INFORMATION));
-      RtlSecureZeroMemory(&pi2, sizeof(PROCESS_INFORMATION));
       CloseHandle(hExe);
-      CloseHandle(hSentinel);
       CloseHandle(hDll);
-      if (CreateProcessA(NULL, "aotx64.exe", NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
+      if (CreateProcessA(NULL, "aot-hook.exe", NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi))
       {
         CloseHandle(pi.hThread);
       }
@@ -862,36 +617,11 @@ _tmain(
       {
         printf("lasterr %ld\n", GetLastError());
       }
-      if (CreateProcessA(NULL, "aotx64-sentinel.exe", NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi2))
-      {
-        CloseHandle(pi.hThread);
-      }
-      HANDLE h[2] = {pi.hProcess, pi2.hProcess};
-      WaitForMultipleObjects(2, h, FALSE, INFINITE);
+      WaitForSingleObject(pi.hProcess, INFINITE);
       CloseHandle(pi.hProcess);
-      CloseHandle(pi2.hProcess);
+      CloseHandle(hModHost);
     }
     ExitProcess(0);
-}
-#elif defined _SENTINEL
-    DWORD dwExitCode = EXIT_FAILURE;
-    HANDLE hProcess  = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetHookProcessId());
-    if (hProcess)
-    {
-      INT nRealityChecks = 1000;
-      
-      if(GetCurrentProcessId() != GetHookProcessId())
-      {
-        WaitForSingleObject(hProcess, INFINITE);
-        dwExitCode = EXIT_SUCCESS;
-      }
-      WaitForSingleObject(hProcess, INFINITE);
-      UnsetCbtHook();
-      // Wake up any bum ass services who still have an instance of our .dlls loaded
-      do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (0 < --nRealityChecks);
-      CloseHandle(hProcess);
-    }
-    ExitProcess(dwExitCode);
 }
 #else
     AOTUSERDATA aot;
@@ -933,29 +663,22 @@ _tmain(
     if (!hWnd)
       ExitProcess(uExitCode);
 
-    if (!CreateConsole(650, 150))
-      ExitProcess(uExitCode);
-
     if (CloseHandle(
           CreateThread(
-            0, 0, (LPTHREAD_START_ROUTINE)MouseHookThread, (LPVOID)&hWnd, 0, 0)))
+            0, 0, (LPTHREAD_START_ROUTINE)CbtHookThread, (LPVOID)&hWnd, 0, 0)))
     {
-      if (CloseHandle(
-            CreateThread(
-              0, 0, (LPTHREAD_START_ROUTINE)CbtHookThread, (LPVOID)&hWnd, 0, 0)))
-      {
-        MSG msg;
-        RtlSecureZeroMemory(&msg, sizeof(MSG));
-        while (GetMessage(&msg, NULL, 0, 0) > 0) {
-          TranslateMessage(&msg);
-          DispatchMessage(&msg);
-          continue;
-        }
-        uExitCode = EXIT_SUCCESS;
+      MSG msg;
+      RtlSecureZeroMemory(&msg, sizeof(MSG));
+      while (GetMessage(&msg, NULL, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+        continue;
       }
+      uExitCode = EXIT_SUCCESS;
     }
     ExitProcess(uExitCode);
 }
+
 #endif
 #endif
 #endif
