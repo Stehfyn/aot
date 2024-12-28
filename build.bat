@@ -58,6 +58,9 @@ if "%0" == ":%build_hook%" (
 	echo. && echo %2 host dll
 	cl %cflags% /D "_WINDLL" /D "_AOTHOSTDLL" /LD %sources% /link /MACHINE:%2 %libs% /IMPLIB:%1-host.lib /OUT:%1-host.dll /ENTRY:DllMain
 
+	echo. && echo %2 sentinel 
+	cl %cflags% /D "_SENTINEL" /Tc %sources% %libs% %1-hook.lib /link /MACHINE:%2 /OUT:%1-sentinel.exe
+
 	echo. && echo %2 hook exe
 	cl %cflags% /Tc %sources% %libs% %1-hook.lib %1-host.lib /link /MACHINE:%2 /OUT:%1-hook.exe
 	echo. && echo %2 resources

@@ -5,11 +5,13 @@
 #define AOT_HOOK_DLL_DATA     101
 #define AOT_HOOK_EXE_DATA     102
 #define AOT_HOST_DLL_DATA     103
-#define AOT_X86HOST_EXE_DATA  104
-#define AOT_X64HOST_EXE_DATA  105
+#define AOT_SENTINEL_EXE_DATA 104
+#define AOT_X86HOST_EXE_DATA  105
+#define AOT_X64HOST_EXE_DATA  106
 #define AOT_HOOK_DLL          "aot-hook.dll"
 #define AOT_HOOK_EXE          "aot-hook.exe"
 #define AOT_HOST_DLL          "aot-host.dll"
+#define AOT_SENTINEL_EXE      "aot-sentinel.exe"
 #define AOT_X86HOST_EXE       "aotx86-host.exe"
 #define AOT_X64HOST_EXE       "aotx64-host.exe"
 
@@ -21,7 +23,7 @@ AOT_EXE_MANIFEST      RT_MANIFEST     "aot.exe.manifest"
 AOT_HOOK_DLL_DATA     RCDATA          AOT_HOOK_DLL
 AOT_HOOK_EXE_DATA     RCDATA          AOT_HOOK_EXE
 AOT_HOST_DLL_DATA     RCDATA          AOT_HOST_DLL
-
+AOT_SENTINEL_EXE_DATA RCDATA          AOT_SENTINEL_EXE
 // -----------------------------------------------------
 // aot-release.rc : Definitions
 // -----------------------------------------------------
@@ -49,12 +51,12 @@ AOT_X64HOST_EXE_DATA  RCDATA          AOT_X64HOST_EXE
 EXTERN_C
 IMAGE_DOS_HEADER __ImageBase;
 
-#if   (defined __x86_64__) || (defined _M_X64)
-  #define ARCH(identifier) identifier ## 64
-  #define SEGMENT ".shared64"
-#elif (defined __i386__) || (defined _M_IX86)
+#if (defined __i386__) || (defined _M_IX86)
   #define ARCH(identifier) identifier ## 32
   #define SEGMENT ".shared32"
+#elif   (defined __x86_64__) || (defined _M_X64)
+  #define ARCH(identifier) identifier ## 64
+  #define SEGMENT ".shared64"
 #endif
 
 #if defined _WINDLL
@@ -84,7 +86,7 @@ IMAGE_DOS_HEADER __ImageBase;
 // -----------------------------------------------------
 
 EXTERN_C
-AOTAPI BOOL AOTAPIV
+BOOL AOTAPI AOTAPIV
 SetCbtHook(
     HWND hWnd
     );
@@ -123,7 +125,6 @@ GetHookProcessId(
 //__declspec(align(16)) 
 typedef struct _AOTUSERDATA {
   DWORD dwCbtHookThreadId;
-  BOOL  fAlwaysOnTop;
 #if   (defined __i386__) || (defined _M_IX86)
   __declspec(align(4)) unsigned __int8 reserved[4];
 #endif
@@ -280,9 +281,10 @@ CbtHookThread(
 // -----------------------------------------------------
 #ifdef _AOTHOOKDLL
 
+
 static 
 BOOL CFORCEINLINE CALLBACK
-AppendSystemMenu(
+UpdateSystemMenu(
     HWND hWnd)
 {
     HMENU hSysMenu = NULL;
@@ -292,21 +294,70 @@ AppendSystemMenu(
     if(hSysMenu)
     {
       MENUITEMINFO mii;
+      DWORD exStyle = (DWORD)GetWindowLong(hWnd, GWL_EXSTYLE);
       RtlSecureZeroMemory(&mii, sizeof(MENUITEMINFO));
       mii.cbSize = sizeof(MENUITEMINFO);
       mii.fMask  = MIIM_ID;
-
+      
       if (!GetMenuItemInfo(hSysMenu, AOT_MENU_ALWAYS_ON_TOP, FALSE, &mii))
         return AppendMenu(
           hSysMenu,
-          MF_BYPOSITION | MF_STRING,
+          MF_BYPOSITION | MF_STRING | ((exStyle & WS_EX_TOPMOST) ? MF_CHECKED : MF_UNCHECKED),
           AOT_MENU_ALWAYS_ON_TOP,
           AOT_MENUTEXT_ALWAYS_ON_TOP
+        );
+      else
+        return ModifyMenu(
+          hSysMenu,
+          AOT_MENU_ALWAYS_ON_TOP,
+          MF_BYCOMMAND | MF_STRING | ((exStyle & WS_EX_TOPMOST) ? MF_CHECKED : MF_UNCHECKED),
+          AOT_MENU_ALWAYS_ON_TOP,
+          NULL
         );
     }
     return FALSE;
 }
+static 
+BOOL CFORCEINLINE APIPRIVATE
+IsShellWindow(HWND Window)
+{
+  if (!IsWindow(Window) || !IsWindowVisible(Window))
+  {
+    return 1;
+  }
+  //if (GetAncestor(Window, GA_PARENT) != GetDesktopWindow())
+  //{
+  //  return 0;
+  //}
 
+  RECT ClientRect;
+  GetClientRect(Window, &ClientRect);
+  if (ClientRect.right - ClientRect.left <= 1 || ClientRect.bottom - ClientRect.top <= 1)
+  {
+    return 1;
+  }
+
+  TCHAR cDescription[256];
+  GetWindowText(Window, cDescription, sizeof(cDescription));
+  
+  if (!_tccmp(cDescription, _T("Start")))
+  {
+    return 1;
+  }
+
+  // Start at the root owner
+  /*HWND hwndWalk = GetAncestor(Window, GA_ROOTOWNER);
+
+  // See if we are the last active visible popup
+  HWND hwndTry;
+  while ((hwndTry = GetLastActivePopup(hwndWalk)) != hwndTry)
+  {
+      if (IsWindowVisible(hwndTry)) break;
+      hwndWalk = hwndTry;
+  }
+  return (hwndWalk == Window);*/
+  return 0;
+}
 static
 LRESULT CFORCEINLINE CALLBACK
 CBTProc(
@@ -317,25 +368,28 @@ CBTProc(
     switch (nCode) {
     case HCBT_SYSCOMMAND:
     {
+      HWND  hWnd    = GetForegroundWindow();
+      if(!IsShellWindow(hWnd)){
       switch(wParam) {
-      case SC_AOT:
-      {
-        HWND  hWnd    = GetForegroundWindow();
+      case SC_AOT:{
+        
         DWORD exStyle = (DWORD)GetWindowLong(hWnd, GWL_EXSTYLE);
         SetWindowPos(
           hWnd,
           (exStyle & WS_EX_TOPMOST) ? HWND_NOTOPMOST : HWND_TOPMOST,
-          0,
-          0,
-          0,
-          0,
+          0,0,0,0,
           SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW|SWP_FRAMECHANGED
         );
       }
+      case SC_MOUSEMENU:
+      case SC_KEYMENU:
+        {}
+        UpdateSystemMenu(GetForegroundWindow());
       default:
         break;
       }
       break;
+    }
     }
     case HCBT_ACTIVATE:
     {
@@ -346,9 +400,9 @@ CBTProc(
         {
           TCHAR szClassName[256];
           GetClassName((HWND)wParam, szClassName, sizeof(szClassName));
-          if(_tccmp(szClassName, _T("#32768")))
+          if(_tccmp(szClassName, _T("#32768")) && _tccmp(szClassName, _T("OleMainThreadWndClass")))
           {
-            AppendSystemMenu((HWND)wParam);
+            UpdateSystemMenu((HWND)wParam);
           }
         }
       }
@@ -472,29 +526,29 @@ UnloadResource(
       HGLOBAL hResourceData = LoadResource(hModule, hResourceInfo);
       if(hResourceData)
       {
-        CONST LPVOID pvResourceData = (CONST LPVOID)LockResource(hResourceData);
-        if(pvResourceData)
+        CONST LPVOID lpvResourceData = (CONST LPVOID)LockResource(hResourceData);
+        if(lpvResourceData)
         {
           DWORD dwResourceSize = SizeofResource(hModule, hResourceInfo);
           if(dwResourceSize)
           {
             HANDLE hFile = CreateFile(
-              szName,               
-              GENERIC_WRITE,        
+              szName,        
+              GENERIC_WRITE,
               0,
-              NULL,                 
-              CREATE_ALWAYS,        
+              NULL,
+              CREATE_ALWAYS,
               FILE_ATTRIBUTE_NORMAL,
-              NULL                  
+              NULL
             );
             if(hFile)
             {
-              DWORD dwBytesWritten = 0;
+              DWORD _ = 0;
               if(!WriteFile(
                 hFile,          
-                pvResourceData, 
+                lpvResourceData, 
                 dwResourceSize, 
-                &dwBytesWritten,
+                &_,
                 NULL            
                 ))
               {
@@ -522,23 +576,25 @@ Killcord(
     {
       WaitForSingleObject(hProcessId, INFINITE);
     }
-    //UnsetCbtHook();
+    UnsetCbtHook();
     SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
     CloseHandle(hProcessId);
     ExitProcess(0);
 }
+
 static
 VOID CFORCEINLINE APIPRIVATE
 Killcord2(
   LPVOID dwProcessId)
 {
+  INT nRealityChecks = 100;
   HANDLE hProcessId = OpenProcess(PROCESS_ALL_ACCESS, FALSE, (DWORD)(DWORD_PTR)dwProcessId);
   if (hProcessId)
   {
     WaitForSingleObject(hProcessId, INFINITE);
   }
-  SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
   CloseHandle(hProcessId);
+  do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (0 < --nRealityChecks);
   ExitProcess(0);
 }
 void
@@ -562,11 +618,16 @@ _tmain(
   CreateProcessA(NULL, "aotx64-host", NULL, NULL, FALSE, CREATE_SUSPENDED | CREATE_NO_WINDOW, NULL, NULL, &si, &pi2);
   SetCurrentDirectory(_T(".\\.."));
   HANDLE hJob = CreateJobObject(NULL, NULL);
-  JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo = {};
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo = {0};
   jobInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+  //JOBOBJECT_BASIC_UI_RESTRICTIONS uiRestrictions = {0};
+  //uiRestrictions.UIRestrictionsClass = JOB_OBJECT_UILIMIT_READCLIPBOARD | JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
   if (!SetInformationJobObject(hJob, JobObjectExtendedLimitInformation, &jobInfo, sizeof(jobInfo))) {
     CloseHandle(hJob);
   }
+  //if (!SetInformationJobObject(hJob, JobObjectBasicLimitInformation, &uiRestrictions, sizeof(uiRestrictions))) {
+  //  CloseHandle(hJob);
+  //}
   AssignProcessToJobObject(hJob, pi.hProcess);
   AssignProcessToJobObject(hJob, pi2.hProcess);
   ResumeThread(pi.hThread);
@@ -583,10 +644,10 @@ _tmain(
   ExitProcess(0);
 }
 #elif defined _HOST
-      HMODULE hModule   = GetModuleHandle(NULL);
-      HANDLE  hDllHost      = UnloadResource(hModule, AOT_HOST_DLL_DATA,          _T(AOT_HOST_DLL));
-      CloseHandle(hDllHost);
-      HMODULE hModHost = LoadLibrary(_T(AOT_HOST_DLL));
+    HMODULE hModule   = GetModuleHandle(NULL);
+    HANDLE  hDllHost  = UnloadResource(hModule, AOT_HOST_DLL_DATA, _T(AOT_HOST_DLL));
+    CloseHandle(hDllHost);
+    HMODULE hModHost = LoadLibrary(_T(AOT_HOST_DLL));
     if(hModHost)
     {
       CHAR    szPath    [MAX_PATH];
@@ -595,8 +656,10 @@ _tmain(
       PathAppendA(szPath, "aotx64.exe");
       HANDLE  hDll = UnloadResource(hModule, AOT_HOOK_DLL_DATA, _T(AOT_HOOK_DLL));
       HANDLE  hExe = UnloadResource(hModule, AOT_HOOK_EXE_DATA, _T(AOT_HOOK_EXE));
+      HANDLE  hSentinel = UnloadResource(hModule, AOT_SENTINEL_EXE_DATA, _T(AOT_SENTINEL_EXE));
       STARTUPINFOA        si;
       PROCESS_INFORMATION pi;
+      PROCESS_INFORMATION pi2;
 
       RtlSecureZeroMemory(szPath, sizeof(szPath));
       printf("%s\n", szPath);
@@ -607,8 +670,10 @@ _tmain(
       si.dwFlags = STARTF_USESHOWWINDOW;
       si.wShowWindow = SW_HIDE;
       RtlSecureZeroMemory(&pi, sizeof(PROCESS_INFORMATION));
+      RtlSecureZeroMemory(&pi2, sizeof(PROCESS_INFORMATION));
       CloseHandle(hExe);
       CloseHandle(hDll);
+      CloseHandle(hSentinel);
       if (CreateProcessA(NULL, "aot-hook.exe", NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi))
       {
         CloseHandle(pi.hThread);
@@ -617,11 +682,41 @@ _tmain(
       {
         printf("lasterr %ld\n", GetLastError());
       }
-      WaitForSingleObject(pi.hProcess, INFINITE);
+      if (CreateProcessA(NULL, "aot-sentinel.exe", NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi2))
+      {
+        CloseHandle(pi.hThread);
+      }
+      else
+      {
+        printf("lasterr %ld\n", GetLastError());
+      }
+      HANDLE h[2] = {pi.hProcess, pi2.hProcess};
+      WaitForMultipleObjects(2, h, FALSE, INFINITE);
       CloseHandle(pi.hProcess);
+      CloseHandle(pi2.hProcess);
       CloseHandle(hModHost);
     }
     ExitProcess(0);
+}
+#elif defined _SENTINEL
+  DWORD dwExitCode = EXIT_FAILURE;
+  HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetHookProcessId());
+  if (hProcess)
+  {
+    INT nRealityChecks = 1000;
+
+    if (GetCurrentProcessId() != GetHookProcessId())
+    {
+      WaitForSingleObject(hProcess, INFINITE);
+      dwExitCode = EXIT_SUCCESS;
+    }
+    WaitForSingleObject(hProcess, INFINITE);
+    UnsetCbtHook();
+    // Wake up any bum ass services who still have an instance of our .dlls loaded
+    do SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0); while (0 < --nRealityChecks);
+    CloseHandle(hProcess);
+  }
+  ExitProcess(dwExitCode);
 }
 #else
     AOTUSERDATA aot;
@@ -672,7 +767,6 @@ _tmain(
       while (GetMessage(&msg, NULL, 0, 0) > 0) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
-        continue;
       }
       uExitCode = EXIT_SUCCESS;
     }
