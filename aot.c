@@ -14,7 +14,7 @@
 #define AOT_SENTINEL_EXE      "aot-sentinel.exe"
 #define AOT_X86HOST_EXE       "aotx86-host.exe"
 #define AOT_X64HOST_EXE       "aotx64-host.exe"
-
+#define _WIN32_WINNT 0x0600
 // -----------------------------------------------------
 // aot-host.rc : Definitions
 // -----------------------------------------------------
@@ -290,19 +290,16 @@ UpdateSystemMenu(
     HWND hWnd)
 {
     HMENU hSysMenu = NULL;
-    GetSystemMenu(hWnd, TRUE);
     hSysMenu = GetSystemMenu(hWnd, FALSE);
-    
     if(hSysMenu)
     {
       MENUITEMINFO mii;
-      DWORD        exStyle; 
+      DWORD exStyle = (DWORD)GetWindowLong(hWnd, GWL_EXSTYLE);
       RtlSecureZeroMemory(&mii, sizeof(MENUITEMINFO));
 
       mii.cbSize = sizeof(MENUITEMINFO);
       mii.fMask  = MIIM_ID;
-      exStyle    = (DWORD)GetWindowLong(hWnd, GWL_EXSTYLE);
-      
+
       if (!GetMenuItemInfo(hSysMenu, AOT_MENU_ALWAYS_ON_TOP, FALSE, &mii))
         return AppendMenu(
           hSysMenu,
@@ -316,7 +313,7 @@ UpdateSystemMenu(
           AOT_MENU_ALWAYS_ON_TOP,
           MF_BYCOMMAND | MF_STRING | ((exStyle & WS_EX_TOPMOST) ? MF_CHECKED : MF_UNCHECKED),
           AOT_MENU_ALWAYS_ON_TOP,
-          NULL
+          AOT_MENUTEXT_ALWAYS_ON_TOP
         );
     }
     return FALSE;
@@ -332,27 +329,24 @@ CBTProc(
     switch (nCode) {
     case HCBT_SYSCOMMAND:
     {
-      HWND hWnd = GetForegroundWindow();
-      if(IsWindowVisible(hWnd))
-      {
-        switch(wParam) {
-        case SC_AOT:
-        {
-          DWORD exStyle = (DWORD)GetWindowLong(hWnd, GWL_EXSTYLE);
-          SetWindowPos(
-            hWnd,
-            (exStyle & WS_EX_TOPMOST) ? HWND_NOTOPMOST : HWND_TOPMOST,
-            0,0,0,0,
-            SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW|SWP_FRAMECHANGED
-          );
-          break;
-        }
-        case SC_MOUSEMENU:
-        case SC_KEYMENU:
-          UpdateSystemMenu(GetForegroundWindow());
-        default:
-          break;
-        }
+      switch(wParam) {
+      case SC_AOT:{
+        HWND hWnd = GetForegroundWindow();
+        DWORD exStyle = (DWORD)GetWindowLong(hWnd, GWL_EXSTYLE);
+        SetWindowPos(
+          hWnd,
+          (exStyle & WS_EX_TOPMOST) ? HWND_NOTOPMOST : HWND_TOPMOST,
+          0,0,0,0,
+          SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW|SWP_FRAMECHANGED
+        );
+        UpdateSystemMenu(hWnd);
+        break;
+      }
+      case SC_MOUSEMENU:
+      case SC_KEYMENU:
+        UpdateSystemMenu(GetForegroundWindow());
+      default:
+        break;
       }
       break;
     }
@@ -363,12 +357,9 @@ CBTProc(
         HWND hWndActive = ((LPCBTACTIVATESTRUCT)lParam)->hWndActive;
         if(hWndActive)
         {
-          
           TCHAR szClassName[256];
           GetClassName((HWND)wParam, szClassName, sizeof(szClassName));
-          if(_tccmp(szClassName, _T("#32768")) && 
-             _tccmp(szClassName, _T("CLIPBRDWNDCLASS")) &&
-             _tccmp(szClassName, _T("ApplicationFrameWindow")))
+          if(_tccmp(szClassName, _T("#32768")))
           {
             UpdateSystemMenu((HWND)wParam);
           }
@@ -650,7 +641,7 @@ CreateSuspendedHost(
         NULL,
         NULL,
         FALSE, 
-        CREATE_SUSPENDED|CREATE_NO_WINDOW, 
+        CREATE_SUSPENDED, 
         NULL,
         WorkingDirectory,
         &lpManagedHost->si,
@@ -673,7 +664,7 @@ CreateSuspendedHost(
         NULL,
         NULL,
         FALSE,
-        CREATE_SUSPENDED | CREATE_NO_WINDOW,
+        CREATE_SUSPENDED,
         NULL,
         WorkingDirectory,
         &lpManagedHost->si,
@@ -716,14 +707,17 @@ BootstrapHost(
     return LoadLibrary(_T(AOT_HOST_DLL));
 }
 
-#define WM_TRAYICON (WM_USER + 1)
+#define WM_TRAYICON (WM_USER + 100)
 static
 LRESULT CFORCEINLINE CALLBACK
 WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 {
   if (uMsg == WM_TRAYICON) 
   {
-    if (lParam == WM_LBUTTONUP || lParam == WM_RBUTTONUP) {
+    if (lParam == WM_LBUTTONUP){
+      SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
+    }
+    if(lParam == WM_RBUTTONUP) {
       PostQuitMessage(0); // Exit on click
     }
   }
