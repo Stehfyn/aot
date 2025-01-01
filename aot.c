@@ -8,7 +8,7 @@
 #include <windows.h>
 
 #define AOT_HOOK_EXE_MANIFEST   1
-#define AOT_ICON				        2
+#define AOT_ICON                2
 #define AOT_HOOK_DLL_DATA       101
 #define AOT_HOOK_EXE_DATA       102
 #define AOT_HOST_DLL_DATA       103
