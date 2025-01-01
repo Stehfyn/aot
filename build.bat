@@ -13,8 +13,8 @@ if not defined VSINSTALLPATH (
 
 set out=out
 set sources=..\..\aot.c
-set cflags=/nologo /O2 /Oi /MT /std:c11 /Wall /WX /wd4702 /wd5045 /wd4710 /wd4191 /wd4820 /wd4255 /D _NDEBUG /D UNICODE /D _UNICODE
-set libs=user32.lib comctl32.lib ntdll.lib Kernel32.lib libcmt.lib Shlwapi.lib Comctl32.lib shell32.lib runtimeobject.lib Ole32.lib Advapi32.lib
+set cflags=/nologo /O2 /Oi /MT /std:c11 /Wall /WX /D _NDEBUG /D UNICODE /D _UNICODE
+set libs=ntdll.lib Kernel32.lib libcmt.lib user32.lib comctl32.lib  Shlwapi.lib shell32.lib runtimeobject.lib ole32.lib advapi32.lib
 
 set "build_hook=/?"
 
@@ -33,9 +33,10 @@ if exist "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" (
 
 	echo. && echo  x64 release resources
 	copy ..\..\aot.c aot.c
-	copy ..\..\aot.exe.manifest aot.exe.manifest
 	copy ..\..\aot.ico aot.ico
-	copy aot.c aot.rc
+	copy ..\..\aot.exe.manifest aot.exe.manifest
+	ren aot.c aot.rc
+
 	rc /DVERCSV=""1,0,0,0"" /DVERDOT=""1.0.0.0"" -d _VERRES /fo ver.res aot.rc
 	rc -d _RELRES /fo aot.res aot.rc
 
@@ -57,7 +58,9 @@ if "%0" == ":%build_hook%" (
 
 	copy ..\..\aot.c aot.c
 	copy ..\..\aot.ico aot.ico
-	copy aot.c aot.rc
+	copy ..\..\aot.exe.manifest aot.exe.manifest
+	ren aot.c aot.rc
+
 	rc /DVERCSV=""1,0,0,0"" /DVERDOT=""1.0.0.0"" -d _VERRES /fo ver.res aot.rc
 
 	echo. && echo %2 hook dll
@@ -70,7 +73,6 @@ if "%0" == ":%build_hook%" (
 	cl %cflags% /Tc %sources% %libs% %1-hook.lib %1-host.lib ver.res /link /MACHINE:%2 /OUT:%1-hook.exe /SUBSYSTEM:Windows
 
 	echo. && echo %2 resources
-	copy ..\..\aot.exe.manifest aot.exe.manifest
 	rc -d _HOSTRES /fo aot.res aot.rc
 
 	echo. && echo %2 host exe
