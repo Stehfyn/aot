@@ -142,7 +142,6 @@ GetHookProcessId(
 // aot-hook.exe : Implementation
 // -----------------------------------------------------
 #define AOT_INSTANCE_NAME          (TEXT("AlwaysOnTop"))
-#define AOT_TRAY_NAME              (TEXT("AOT_TrayWnd"))
 #define AOT_HOOK_NAME              (TEXT("AOT_HookWnd"))
 #define AOT_TRAY_CLASS_NAME        (TEXT("AOT_TrayWndClass"))
 #define AOT_HOOK_CLASS_NAME        (TEXT("AOT_HookWndClass"))
@@ -459,7 +458,7 @@ GetHostProcessId(
 #if (defined _AOTHOSTDLL)
 
 EXTERN_C
-AOTAPI DWORD AOTAPIV
+DWORD AOTAPI AOTAPIV
 GetHostProcessId(
     VOID)
 {
@@ -731,7 +730,7 @@ TrayWndProc(
       return 0;
     case WM_AOTTRAYICON:
     {
-      if (lParam == WM_RBUTTONUP) 
+      if (lParam == WM_RBUTTONUP)
       {
         PostQuitMessage(EXIT_SUCCESS);
         return 0;
@@ -762,7 +761,7 @@ CreateTrayIcon(
     atom              = RegisterClass(&wc);
 
     RtlSecureZeroMemory(&hWnd, sizeof(HWND));
-    hWnd = CreateWindow(MAKEINTATOM(atom), AOT_TRAY_NAME, 0, 0, 0, 0, 0, 0, 0, (HINSTANCE)&__ImageBase, 0);
+    hWnd = CreateWindow(MAKEINTATOM(atom), AOT_INSTANCE_NAME, 0, 0, 0, 0, 0, 0, 0, (HINSTANCE)&__ImageBase, 0);
     if (!hWnd)
       return FALSE;
 
@@ -770,9 +769,8 @@ CreateTrayIcon(
     nid->hIcon  = LoadIcon((HINSTANCE)&__ImageBase, MAKEINTRESOURCE(AOT_ICON));
     nid->uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid->uCallbackMessage = WM_AOTTRAYICON;
-    lstrcpy(nid->szTip, AOT_INSTANCE_NAME);
+    _tcscpy(nid->szTip, AOT_INSTANCE_NAME);
     nid->hWnd = hWnd;
-
     Shell_NotifyIcon(NIM_ADD, nid);
 
     return TRUE;
@@ -957,6 +955,7 @@ _tWinMain(
     WNDCLASS    wc;
     ATOM        atom;
     HWND        hWnd;
+    HWND        hwndParent;
 
     if (!CloseHandle(
            CreateThread(
@@ -971,13 +970,17 @@ _tWinMain(
     
     if (!atom)
       ExitProcess(EXIT_FAILURE);
-    
+
+    hwndParent = FindWindow(AOT_TRAY_CLASS_NAME, AOT_INSTANCE_NAME);
+    if (!hwndParent)
+      ExitProcess(EXIT_FAILURE);
+
     RtlSecureZeroMemory(&aot,  sizeof(AOTUSERDATA));
-    hWnd = CreateWindow(MAKEINTATOM(atom), AOT_HOOK_NAME, 0, 0, 0, 0, 0, 0, 0, (HINSTANCE)&__ImageBase, &aot);
+    hWnd = CreateWindow(MAKEINTATOM(atom), AOT_HOOK_NAME, WS_CHILD, 0, 0, 0, 0, hwndParent, 0, (HINSTANCE)&__ImageBase, &aot);
 
     if (!hWnd)
       ExitProcess(EXIT_FAILURE);
-
+    
     if (!CloseHandle(
           CreateThread(
             0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)CbtHookThread, (LPVOID)&hWnd, 0, 0)))
