@@ -1,3 +1,15 @@
+<!--
+  Title: AlwaysOnTop: A C89-ish love letter to the Win32 api
+  Description: A demoscene-esque implementation of the ill-famed CBT-Hook, adding an HWND_TOPMOST menu item to an activated Windows window's sysmenu. Tp
+  accomodate both 32-bit and 64-bit applications seamlessly and simultaneously, multiple release binaries targeting the two platforms are used. In total, the final .exe
+  contains 8 binaries (4 .dlls, 4 .exe(s)). This data is embedded alongside the application manifest, resource info, and version info, clocking in total at a
+  mightily lean 1000 lines of C89-ish C.
+  Author: Stehfyn
+  Links:
+  - https://github.com/Stehfyn
+  - https://youtu.be/AgTcB26K44Q?si=tdZqElSopUzALcTg
+  -->
+
 AlwaysOnTop hook utility written in C
   - Single file (aot.c) (~1000 sloc)
   - Supports both 32-bit and 64-bit applications
