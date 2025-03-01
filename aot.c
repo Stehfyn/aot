@@ -258,17 +258,17 @@ static
 LRESULT CFORCEINLINE CALLBACK
 HookWndProc(
     HWND   hWnd,
-    UINT   message,
+    UINT   uMsg,
     WPARAM wParam,
     LPARAM lParam)
 {
-    switch (message) {
+    switch (uMsg) {
     HANDLE_MSG(hWnd, WM_NCCREATE,    OnNcCreate);
     HANDLE_MSG(hWnd, WM_AOTHOOKINIT, OnAotHookInit);
     HANDLE_MSG(hWnd, WM_CLOSE,       OnClose);
     HANDLE_MSG(hWnd, WM_DESTROY,     OnDestroy); 
     }
-    return DefWindowProc(hWnd, message, wParam, lParam);
+    return DefWindowProc(hWnd, uMsg, wParam, lParam);
 }
 
 static
