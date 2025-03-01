@@ -177,7 +177,7 @@ OnNcCreate(
     LPCREATESTRUCT lpCreateStruct)
 {
     LONG_PTR offset = 0;
-    HANDLE   hInstanceMutex = CreateMutex(NULL, TRUE, AOT_HOOK_INSTANCE_MUTEX);
+    HANDLE   hInstanceMutex = CreateMutex(0, TRUE, AOT_HOOK_INSTANCE_MUTEX);
     
     if (hInstanceMutex && (GetLastError() == ERROR_ALREADY_EXISTS))
     {
@@ -187,7 +187,7 @@ OnNcCreate(
       return FALSE;
     }
 
-    SetLastError(0);
+    SetLastError(NO_ERROR);
     offset = SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)lpCreateStruct->lpCreateParams);
     
     if ((0 == offset) && (NO_ERROR != GetLastError()))
@@ -203,9 +203,9 @@ OnAotHookInit(
     AOTHOOKTHREAD dwHookThread,
     DWORD         dwAotHookThreadId)
 {
-    LPAOTUSERDATA lpAotUserData = (LPAOTUSERDATA)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+    LPAOTUSERDATA lpAotUserData;
 
-    if(lpAotUserData)
+    if ((lpAotUserData = (LPAOTUSERDATA)GetWindowLongPtr(hWnd, GWLP_USERDATA)))
     {
       switch (dwHookThread) {
       case AOTCBTHOOKTHREAD:
@@ -233,17 +233,17 @@ VOID CFORCEINLINE CALLBACK
 OnDestroy(
     HWND hWnd)
 {
-    LPAOTUSERDATA lpAotUserData = (LPAOTUSERDATA)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+    LPAOTUSERDATA lpAotUserData;
 
-    if(lpAotUserData)
+    if ((lpAotUserData = (LPAOTUSERDATA)GetWindowLongPtr(hWnd, GWLP_USERDATA)))
     {
       if (lpAotUserData->dwCbtHookThreadId)
       {
-        HANDLE hCbtHookThread = OpenThread(SYNCHRONIZE, FALSE, lpAotUserData->dwCbtHookThreadId);
-        PostThreadMessage(lpAotUserData->dwCbtHookThreadId, WM_AOTQUIT, 0, 0);
+        HANDLE hCbtHookThread;
 
-        if (hCbtHookThread)
+        if ((hCbtHookThread = OpenThread(SYNCHRONIZE, FALSE, lpAotUserData->dwCbtHookThreadId)))
         {
+          PostThreadMessage(lpAotUserData->dwCbtHookThreadId, WM_AOTQUIT, 0, 0);
           WaitForSingleObject(hCbtHookThread, INFINITE);
           CloseHandle(hCbtHookThread);
         }
@@ -287,9 +287,8 @@ CbtHookThread(
         (LPARAM)(DWORD)GetCurrentThreadId()
       );
 
-      RtlSecureZeroMemory(&msg, sizeof(MSG));
-      while (GetMessage(&msg, NULL, 0, 0) > 0) {
-        TranslateMessage(&msg);
+      SecureZeroMemory(&msg, sizeof(MSG));
+      while (GetMessage(&msg, 0, 0, 0)) { 
         DispatchMessage(&msg);
 
         switch (msg.message) {
@@ -319,14 +318,14 @@ BOOL CFORCEINLINE CALLBACK
 UpdateSystemMenu(
     HWND hWnd)
 {
-    HMENU hSysMenu = NULL;
-    hSysMenu = GetSystemMenu(hWnd, FALSE);
-    if(hSysMenu)
+    HMENU hSysMenu;
+
+    if ((hSysMenu = GetSystemMenu(hWnd, FALSE)))
     {
       MENUITEMINFO mii;
-      LONG exStyle = GetWindowLong(hWnd, GWL_EXSTYLE);
-      RtlSecureZeroMemory(&mii, sizeof(MENUITEMINFO));
+      LONG exStyle = GetWindowExStyle(hWnd);
 
+      SecureZeroMemory(&mii, sizeof(MENUITEMINFO));
       mii.cbSize = sizeof(MENUITEMINFO);
       mii.fMask  = MIIM_ID;
 
@@ -365,10 +364,10 @@ CBTProc(
     {
       TCHAR szClassName[256];
       HWND hWnd = (HWND)wParam;
-      RtlSecureZeroMemory(szClassName, sizeof(szClassName));
-      if(GetClassName(hWnd, szClassName, sizeof(szClassName)))
-        if(_tccmp(szClassName, _T("#32768")))
-          if(IsWindowVisible(hWnd))
+      SecureZeroMemory(szClassName, sizeof(szClassName));
+      if (GetClassName(hWnd, szClassName, sizeof(szClassName)))
+        if (_tccmp(szClassName, _T("#32768")))
+          if (IsWindowVisible(hWnd))
             UpdateSystemMenu(hWnd);
       break;
     }
@@ -378,7 +377,7 @@ CBTProc(
       case SC_AOT:
       {
         HWND hWnd    = GetForegroundWindow();
-        LONG exStyle = GetWindowLong(hWnd, GWL_EXSTYLE);
+        LONG exStyle = GetWindowExStyle(hWnd);
         UINT uFlags  = SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_FRAMECHANGED;
         HWND hWndInsertAfter = (exStyle & WS_EX_TOPMOST) ? HWND_NOTOPMOST : HWND_TOPMOST;
         SetWindowPos(hWnd, hWndInsertAfter, 0, 0, 0, 0, uFlags);
@@ -404,10 +403,10 @@ AOTAPI BOOL AOTAPIV
 SetCbtHook(
     HWND hWnd)
 {
+    HHOOK hook;
     InitializeCriticalSection(&ARCH(csHookLoaderLock));
-    HHOOK hook = SetWindowsHookEx(WH_CBT, CBTProc, ARCH(hCbtHookModule), 0);
 
-    if (hook)
+    if ((hook = SetWindowsHookEx(WH_CBT, CBTProc, ARCH(hCbtHookModule), 0)))
     {
       ARCH(hCbtHook)           = hook;
       ARCH(hWndHookMarshaller) = hWnd;
@@ -429,7 +428,7 @@ UnsetCbtHook(
       ARCH(fBounceLoads)       = TRUE;
     }
     LeaveCriticalSection(&ARCH(csHookLoaderLock));
-    SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
+    SendNotifyMessage(HWND_BROADCAST, 0, 0, 0);
 
     return !!ARCH(hCbtHook);
 }
@@ -478,10 +477,10 @@ IsServiceHost(
     HANDLE hProcess)
 {
     TCHAR szPath[MAX_PATH];
-    RtlSecureZeroMemory(szPath, sizeof(szPath));
+    SecureZeroMemory(szPath, sizeof(szPath));
     GetFinalPathNameByHandle(hProcess, szPath, sizeof(szPath), 0);
     PathStripPath(szPath);
-    return !_tccmp(szPath, _T("svchost.exe"));
+    return !CompareString(LOCALE_INVARIANT, 0, szPath, (int)_tcslen(szPath), _T("svchost.exe"), (int)_countof(_T("svchost.exe")));
 }
 
 BOOL
@@ -496,6 +495,8 @@ DllMain(
     switch (ul_reason_for_call) {
     case DLL_PROCESS_ATTACH: 
     {
+      DisableThreadLibraryCalls(hModule);
+
 #if defined   _AOTHOSTDLL
       if (!ARCH(dwHostProcessId))
         ARCH(dwHostProcessId) = GetCurrentProcessId();
@@ -519,10 +520,9 @@ DllMain(
       if (IsServiceHost(GetCurrentProcess()))
         return FALSE;
 
-      DisableThreadLibraryCalls(hModule);
     }
     default:
-      SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
+      SendNotifyMessage(HWND_BROADCAST, 0, 0, 0);
       return TRUE;
     }
 }
@@ -539,7 +539,7 @@ UnloadFile(
 {
     HANDLE hFile = CreateFile(lpszName, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 
-    if(hFile)
+    if (INVALID_HANDLE_VALUE != hFile)
     {
       DWORD nNumberOfBytesWritten = 0;
       if (!WriteFile(hFile, lpBuffer, nNumberOfBytesToWrite, &nNumberOfBytesWritten, 0))
@@ -565,13 +565,13 @@ UnloadResource(
     if (hResourceInfo)
     {
       HGLOBAL hResourceData = LoadResource(hModule, hResourceInfo);
-      if(hResourceData)
+      if (hResourceData)
       {
         LPCVOID lpResourceData = (LPCVOID)LockResource(hResourceData);
-        if(lpResourceData)
+        if (lpResourceData)
         {
           DWORD dwResourceSize = SizeofResource(hModule, hResourceInfo);
-          if(dwResourceSize)
+          if (dwResourceSize)
           {
             hOut = UnloadFile(lpszName, lpResourceData, dwResourceSize);
           }
@@ -590,9 +590,9 @@ VOID CFORCEINLINE APIPRIVATE
 Killcord(
     LPVOID dwProcessId)
 {
-    HANDLE hProcessId = OpenProcess(SYNCHRONIZE, FALSE, (DWORD)(DWORD_PTR)dwProcessId);
+    HANDLE hProcessId;
 
-    if (hProcessId)
+    if ((hProcessId = OpenProcess(SYNCHRONIZE, FALSE, (DWORD)(DWORD_PTR)dwProcessId)))
     {
       WaitForSingleObject(hProcessId, INFINITE);
       CloseHandle(hProcessId);
@@ -634,7 +634,7 @@ SetJobInformation(
     HANDLE hJob)
 {
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION JobLimitInfo;
-    RtlSecureZeroMemory(&JobLimitInfo, sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION));
+    SecureZeroMemory(&JobLimitInfo, sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION));
 
     JobLimitInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     return SetInformationJobObject(
@@ -652,11 +652,9 @@ GetModulePath(
     LPTSTR  szPath)
 {
     DWORD _ = MAX_PATH;
-    if (!QueryFullProcessImageName(hProcess, 0, szPath, &_))
-      return NULL;
-    if (!PathRemoveFileSpec(szPath))
-      return NULL;
-    return szPath;
+    if (QueryFullProcessImageName(hProcess, 0, szPath, &_) && PathRemoveFileSpec(szPath))
+      return szPath;
+    return NULL;
 }
 
 static
@@ -669,19 +667,15 @@ BuildPaths(
 {
     switch (eHost) {
     case AOT_X86HOST:
-    {
       PathAppend(lpszWorkingDirectory, _T(".\\x86"));
-      CreateDirectory(lpszWorkingDirectory, NULL);
+      CreateDirectory(lpszWorkingDirectory, 0);
       PathAppend(lpszPath, _T(".\\x86\\")_T(AOT_X86HOST_EXE));
       return CloseHandle(UnloadResource(hModule, AOT_X86HOST_EXE_DATA, lpszPath));
-    }
     case AOT_X64HOST:
-    {
       PathAppend(lpszWorkingDirectory, _T(".\\x64"));
-      CreateDirectory(lpszWorkingDirectory, NULL);
+      CreateDirectory(lpszWorkingDirectory, 0);
       PathAppend(lpszPath, _T(".\\x64\\")_T(AOT_X64HOST_EXE));
       return CloseHandle(UnloadResource(hModule, AOT_X64HOST_EXE_DATA, lpszPath));
-    }
     DEFAULT_UNREACHABLE;
     }
 }
@@ -701,7 +695,7 @@ CreateSuspendedHost(
     if (!BuildPaths(hModule, eHost, lpszPath, lpszWorkingDirectory))
       return FALSE;
 
-    if(!CreateProcess(0, lpszPath, 0, 0, 0, CREATE_SUSPENDED, 0, lpszWorkingDirectory, lpsi, lppi))
+    if (!CreateProcess(0, lpszPath, 0, 0, 0, CREATE_SUSPENDED, 0, lpszWorkingDirectory, lpsi, lppi))
       return FALSE;
     
     else
@@ -721,7 +715,7 @@ TrayWndProc(
     WPARAM wParam,
     LPARAM lParam) 
 {
-    switch(uMsg){
+    switch(uMsg) {
     case WM_CLOSE:
       DestroyWindow(hWnd);
       return 0;
@@ -736,7 +730,7 @@ TrayWndProc(
         return 0;
       }
       else if (lParam == WM_LBUTTONUP) 
-        SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
+        SendNotifyMessage(HWND_BROADCAST, 0, 0, 0);
     }
     default:
       break;
@@ -754,15 +748,14 @@ CreateTrayIcon(
     ATOM      atom;
     HWND      hWnd;
 
-    RtlSecureZeroMemory(&wc, sizeof(WNDCLASS));
+    SecureZeroMemory(&wc, sizeof(WNDCLASS));
     wc.hInstance      = (HINSTANCE)&__ImageBase;
     wc.lpfnWndProc    = TrayWndProc;
     wc.lpszClassName  = AOT_TRAY_CLASS_NAME;
     atom              = RegisterClass(&wc);
 
-    RtlSecureZeroMemory(&hWnd, sizeof(HWND));
-    hWnd = CreateWindow(MAKEINTATOM(atom), AOT_INSTANCE_NAME, 0, 0, 0, 0, 0, 0, 0, (HINSTANCE)&__ImageBase, 0);
-    if (!hWnd)
+    SecureZeroMemory(&hWnd, sizeof(HWND));
+    if (!(hWnd = CreateWindow(MAKEINTATOM(atom), AOT_INSTANCE_NAME, 0, 0, 0, 0, 0, 0, 0, (HINSTANCE)&__ImageBase, 0)))
       return FALSE;
 
     nid->cbSize = sizeof(NOTIFYICONDATA);
@@ -784,14 +777,13 @@ TrayThread(
     UNREFERENCED_PARAMETER(unused);
 
     NOTIFYICONDATA nid;
-    RtlSecureZeroMemory(&nid, sizeof(NOTIFYICONDATA));
+    SecureZeroMemory(&nid, sizeof(NOTIFYICONDATA));
 
     if (CreateTrayIcon(&nid))
     {
       MSG msg;
-      RtlSecureZeroMemory(&msg, sizeof(MSG));
-      while (GetMessage(&msg, NULL, 0, 0) > 0) {
-        TranslateMessage(&msg);
+      SecureZeroMemory(&msg, sizeof(MSG));
+      while (GetMessage(&msg, 0, 0, 0)) {
         DispatchMessage(&msg);
       }
     }
@@ -807,9 +799,9 @@ HooksThread(
     UNREFERENCED_PARAMETER(unused);
     
     AOTINSTANCE AlwaysOnTop;
-    RtlSecureZeroMemory(&AlwaysOnTop, sizeof(AOTINSTANCE));
+    SecureZeroMemory(&AlwaysOnTop, sizeof(AOTINSTANCE));
 
-    AlwaysOnTop.hJob = CreateJobObject(NULL, NULL);
+    AlwaysOnTop.hJob = CreateJobObject(0, 0);
     if (!SetJobInformation(AlwaysOnTop.hJob))
     {
       CloseHandle(AlwaysOnTop.hJob);
@@ -818,8 +810,7 @@ HooksThread(
     
     AlwaysOnTop.si.dwFlags          = STARTF_USESHOWWINDOW | STARTF_FORCEOFFFEEDBACK;
     AlwaysOnTop.si.wShowWindow      = SW_HIDE;
-    AlwaysOnTop.x86ManagedHost.lpsi = &AlwaysOnTop.si;
-    AlwaysOnTop.x64ManagedHost.lpsi = &AlwaysOnTop.si;
+    AlwaysOnTop.x86ManagedHost.lpsi = AlwaysOnTop.x64ManagedHost.lpsi = &AlwaysOnTop.si;
 
     if (!GetModulePath(GetCurrentProcess(), AlwaysOnTop.szPath))
       ExitProcess(EXIT_FAILURE);
@@ -840,7 +831,6 @@ HooksThread(
 
     ResumeThread(AlwaysOnTop.x86ManagedHost.pi.hThread);
     CloseHandle(AlwaysOnTop.x86ManagedHost.pi.hThread);
-
     ResumeThread(AlwaysOnTop.x64ManagedHost.pi.hThread);
     CloseHandle(AlwaysOnTop.x64ManagedHost.pi.hThread);
 
@@ -851,14 +841,12 @@ HooksThread(
     AlwaysOnTop.hObjects[1] = AlwaysOnTop.x64ManagedHost.pi.hProcess;
     AlwaysOnTop.hObjects[2] = AlwaysOnTop.x86ManagedHost.hKillcord;
     AlwaysOnTop.hObjects[3] = AlwaysOnTop.x64ManagedHost.hKillcord;
-
     WaitForMultipleObjects(4, AlwaysOnTop.hObjects, FALSE, INFINITE);
 
     CloseHandle(AlwaysOnTop.x86ManagedHost.pi.hProcess);
     CloseHandle(AlwaysOnTop.x64ManagedHost.pi.hProcess);
     CloseHandle(AlwaysOnTop.x86ManagedHost.hKillcord);
     CloseHandle(AlwaysOnTop.x64ManagedHost.hKillcord);
-
     CloseHandle(AlwaysOnTop.hJob);
 
     ExitProcess(EXIT_SUCCESS);
@@ -880,13 +868,13 @@ VOID CFORCEINLINE APIPRIVATE
 Sentinel(
     LPVOID dwProcessId)
 {
-    HANDLE hProcessId = OpenProcess(SYNCHRONIZE, FALSE, (DWORD)(DWORD_PTR)dwProcessId);
+    HANDLE hProcessId;
 
-    if (hProcessId)
+    if ((hProcessId = OpenProcess(SYNCHRONIZE, FALSE, (DWORD)(DWORD_PTR)dwProcessId)))
     {
       WaitForSingleObject(hProcessId, INFINITE);
       UnsetCbtHook();
-      SendNotifyMessage(HWND_BROADCAST, WM_NULL, 0, 0);
+      SendNotifyMessage(HWND_BROADCAST, 0, 0, 0);
       CloseHandle(hProcessId);
 
       ExitProcess(EXIT_SUCCESS);
@@ -908,15 +896,15 @@ _tWinMain(
     UNREFERENCED_PARAMETER(lpCmdLine);
     UNREFERENCED_PARAMETER(nCmdShow);
 
-    InitCommonControls();
+    MSG msg;
+    PostMessage(0, 0, 0, 0);
+    GetMessage(&msg, 0, 0, 0);
+
     SetCurrentProcessExplicitAppUserModelID(AOT_INSTANCE_NAME);
 
 #if   (defined _RELEASE)
-    MSG msg;
-    PostMessage(NULL, 0, 0, 0);
-    GetMessage(&msg, 0, 0, 0);
-    CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)TrayThread,  NULL, 0, 0));
-    CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)HooksThread, NULL, 0, 0));
+    CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)TrayThread,  0, 0, 0));
+    CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)HooksThread, 0, 0, 0));
     SuspendThread(GetCurrentThread());
 
 #elif (defined _HOST)
@@ -924,16 +912,17 @@ _tWinMain(
     
     if (hHostInstance)
     {
-      STARTUPINFOA        si;
+      STARTUPINFOA        sia;
       PROCESS_INFORMATION pi;
+
       CloseHandle(UnloadResource((HMODULE)&__ImageBase, AOT_HOOK_DLL_DATA, _T(AOT_HOOK_DLL)));
       CloseHandle(UnloadResource((HMODULE)&__ImageBase, AOT_HOOK_EXE_DATA, _T(AOT_HOOK_EXE)));
 
-      RtlSecureZeroMemory(&si, sizeof(STARTUPINFOA));
-      si.cb      = sizeof(STARTUPINFOA);
-      si.dwFlags = STARTF_FORCEOFFFEEDBACK;
+      SecureZeroMemory(&sia, sizeof(STARTUPINFOA));
+      sia.cb      = sizeof(STARTUPINFOA);
+      sia.dwFlags = STARTF_FORCEOFFFEEDBACK;
 
-      if (!CreateProcessA(0, AOT_HOOK_EXE, 0, 0, 0, CREATE_SUSPENDED, 0, 0, &si, &pi))
+      if (!CreateProcessA(0, AOT_HOOK_EXE, 0, 0, 0, CREATE_SUSPENDED, 0, 0, &sia, &pi))
       {
         FreeLibrary(hHostInstance);
         ExitProcess(EXIT_FAILURE);
@@ -962,23 +951,19 @@ _tWinMain(
              0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)Sentinel, (LPVOID)(DWORD_PTR)GetHostProcessId(), 0, 0)))
       ExitProcess(EXIT_FAILURE);
 
-    RtlSecureZeroMemory(&wc, sizeof(WNDCLASS));
+    SecureZeroMemory(&wc, sizeof(WNDCLASS));
     wc.hInstance     = hInstance;
     wc.lpfnWndProc   = HookWndProc;
     wc.lpszClassName = AOT_HOOK_CLASS_NAME;
-    atom             = RegisterClass(&wc);
     
-    if (!atom)
+    if (!(atom = RegisterClass(&wc)))
       ExitProcess(EXIT_FAILURE);
 
-    hwndParent = FindWindow(AOT_TRAY_CLASS_NAME, AOT_INSTANCE_NAME);
-    if (!hwndParent)
+    if (!(hwndParent = FindWindow(AOT_TRAY_CLASS_NAME, AOT_INSTANCE_NAME)))
       ExitProcess(EXIT_FAILURE);
 
-    RtlSecureZeroMemory(&aot,  sizeof(AOTUSERDATA));
-    hWnd = CreateWindow(MAKEINTATOM(atom), AOT_HOOK_NAME, WS_CHILD, 0, 0, 0, 0, hwndParent, 0, (HINSTANCE)&__ImageBase, &aot);
-
-    if (!hWnd)
+    SecureZeroMemory(&aot,  sizeof(AOTUSERDATA));
+    if (!(hWnd = CreateWindow(MAKEINTATOM(atom), AOT_HOOK_NAME, WS_CHILD, 0, 0, 0, 0, hwndParent, 0, (HINSTANCE)&__ImageBase, &aot)))
       ExitProcess(EXIT_FAILURE);
     
     if (!CloseHandle(
@@ -988,10 +973,8 @@ _tWinMain(
 
     else
     {
-      MSG msg;
-      RtlSecureZeroMemory(&msg, sizeof(MSG));
-      while (GetMessage(&msg, NULL, 0, 0) > 0) {
-        TranslateMessage(&msg);
+      SecureZeroMemory(&msg, sizeof(MSG));
+      while (GetMessage(&msg, 0, 0, 0)) {
         DispatchMessage(&msg);
       }
 

@@ -29,9 +29,9 @@ if exist "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" (
 
 	mkdir bin
 	pushd int
-	call "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" x64
+	call "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" x86
 
-	echo. && echo  x64 release resources
+	echo. && echo  x86 release resources
 	copy ..\..\aot.c aot.c
 	copy ..\..\aot.ico aot.ico
 	copy ..\..\aot.exe.manifest aot.exe.manifest
@@ -40,8 +40,8 @@ if exist "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" (
 	rc /DVERCSV=""1,0,0,0"" /DVERDOT=""1.0.0.0"" -d _VERRES /fo ver.res aot.rc
 	rc -d _RELRES /fo aot.res aot.rc
 
-	echo. && echo x64 release exe
-	cl %cflags% /D "_RELEASE" /Tc %sources% aot.res %libs% ver.res /link /MACHINE:x64 /OUT:AlwaysOnTop.exe /SUBSYSTEM:Windows
+	echo. && echo x86 release exe
+	cl %cflags% /D "_RELEASE" /Tc %sources% aot.res %libs% ver.res /link /MACHINE:x86 /OUT:AlwaysOnTop.exe /SUBSYSTEM:Windows
 	copy AlwaysOnTop.exe ..\bin\AlwaysOnTop.exe
 
 	popd
