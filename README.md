@@ -19,11 +19,6 @@
 Adds an **Always On Top** toggle to the system menu of *any* window on Windows, 32-bit
 and 64-bit applications alike.
 
-![C](https://img.shields.io/badge/C-C89--ish-blue)
-![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
-![Arch](https://img.shields.io/badge/arch-x86%20%7C%20x64-informational)
-![License](https://img.shields.io/badge/license-MIT-green)
-
 ## Usage
 
 1. Run `AlwaysOnTop.exe`. An icon appears in the system tray.
