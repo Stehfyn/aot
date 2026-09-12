@@ -25,8 +25,6 @@ self-contained `.exe` that unpacks and orchestrates everything it needs at runti
 ![Arch](https://img.shields.io/badge/arch-x86%20%7C%20x64-informational)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-https://github.com/user-attachments/assets/d07e49d3-dd72-44e0-9bc6-bc5dba2501dc
-
 ## Highlights
 
 - **One source file** — the entire project lives in [`aot.c`](aot.c), ~1000 lines of C89-ish C.
@@ -36,66 +34,12 @@ https://github.com/user-attachments/assets/d07e49d3-dd72-44e0-9bc6-bc5dba2501dc
 
 ## Usage
 
-1. Build it (see below), then run `out\bin\AlwaysOnTop.exe`. An icon appears in the system tray.
+1. Run `AlwaysOnTop.exe`. An icon appears in the system tray.
 2. Open any window's **system menu** (press `Alt`+`Space`, or right-click its title bar). A new **Always On Top** entry is there.
 3. Click it to pin the window on top; the entry shows a checkmark while it's active. Click again to unpin.
 4. **Right-click** the tray icon to quit.
 
-## How it works
-
-`AlwaysOnTop.exe` is a 32-bit launcher that never touches disk with anything you have to
-manage. At startup it shows a tray icon and, on a worker thread, unpacks and launches
-both host executables, one per architecture. Each host in turn unpacks its payload and
-installs a `WH_CBT` hook. When a window is activated, the injected hook DLL appends the
-**Always On Top** item to that window's system menu; choosing it flips the window's
-`WS_EX_TOPMOST` style. Two architectures are required because a hook DLL can only be
-injected into processes of its own bitness.
-
-Everything is nested as embedded resources:
-
-```
-AlwaysOnTop.exe                  x86 launcher · tray UI · job-object supervisor
-├── aotx86-host.exe              32-bit host
-│   ├── aot-host.dll
-│   ├── aot-hook.dll             32-bit CBT hook payload (adds the menu item)
-│   └── aot-hook.exe             installs the hook
-└── aotx64-host.exe             64-bit host
-    ├── aot-host.dll
-    ├── aot-hook.dll             64-bit CBT hook payload
-    └── aot-hook.exe             installs the hook
-```
-
-The same `aot.c` compiles into every one of these binaries; which role it plays is
-selected at compile time by preprocessor defines (`_RELEASE`, `_HOST`, `_AOTHOOKDLL`,
-`_AOTHOSTDLL`, and so on), and the resources are built with `rc` and linked in.
-
-## Building
-
-You need **Visual Studio** with the **C++ desktop toolset** (any recent edition,
-including Build Tools). Then:
-
-```bat
-build.bat
-```
-
-`build.bat` locates your toolset automatically via `vswhere`, builds both architectures,
-and produces the final launcher at:
-
-```
-out\bin\AlwaysOnTop.exe
-```
-
-Each compiler and resource-compiler command is echoed as it runs, so you can follow
-exactly what the build does.
-
-## Project layout
-
-| File                 | Purpose                                             |
-| -------------------- | --------------------------------------------------- |
-| `aot.c`              | The entire program — every binary compiles from it. |
-| `aot.manifest`       | Application manifest (embedded).                     |
-| `aot.ico`            | Tray / application icon (embedded).                  |
-| `build.bat`          | Builds all binaries and the final launcher.         |
+https://github.com/user-attachments/assets/d07e49d3-dd72-44e0-9bc6-bc5dba2501dc
 
 ## License
 
