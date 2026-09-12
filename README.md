@@ -17,20 +17,12 @@
 **A C89-ish love letter to the Win32 API.**
 
 Adds an **Always On Top** toggle to the system menu of *any* window on Windows, 32-bit
-and 64-bit applications alike. The whole thing is one file of C, and ships as a single
-self-contained `.exe` that unpacks and orchestrates everything it needs at runtime.
+and 64-bit applications alike.
 
 ![C](https://img.shields.io/badge/C-C89--ish-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
 ![Arch](https://img.shields.io/badge/arch-x86%20%7C%20x64-informational)
 ![License](https://img.shields.io/badge/license-MIT-green)
-
-## Highlights
-
-- **One source file** — the entire project lives in [`aot.c`](aot.c), ~1000 lines of C89-ish C.
-- **One binary to ship** — `AlwaysOnTop.exe` carries **9 binaries in total**: itself, plus **4 DLLs and 4 EXEs** embedded as resources and unpacked on demand.
-- **Both architectures at once** — a 32-bit and a 64-bit hook chain run side by side, so the toggle works in every app regardless of bitness.
-- **No installer, no dependencies** — just run it. It lives in the system tray and cleans up after itself via a job object.
 
 ## Usage
 
