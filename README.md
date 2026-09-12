@@ -12,9 +12,9 @@
   - https://youtu.be/AgTcB26K44Q?si=tdZqElSopUzALcTg
   -->
 
-# AlwaysOnTop
+# aot
 
-**A C89-ish love letter to the Win32 API.**
+**A love letter to the Win32 API in C89**
 
 Adds an **Always On Top** toggle to the system menu of *any* window on Windows, 32-bit
 and 64-bit applications alike.
