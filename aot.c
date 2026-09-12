@@ -274,14 +274,14 @@ HookWndProc(
 static
 VOID CFORCEINLINE APIPRIVATE
 CbtHookThread(
-    LPVOID lpvhWnd)
+    LPVOID hWnd)
 {
-    if (SetCbtHook(*(HWND*)lpvhWnd))
+    if (SetCbtHook((HWND)hWnd))
     {
       MSG msg;
 
       PostMessage(
-        *(HWND*)lpvhWnd,
+        (HWND)hWnd,
         WM_AOTHOOKINIT,
         (WPARAM)(DWORD)AOTCBTHOOKTHREAD,
         (LPARAM)(DWORD)GetCurrentThreadId()
@@ -366,7 +366,7 @@ CBTProc(
       HWND hWnd = (HWND)wParam;
       SecureZeroMemory(szClassName, sizeof(szClassName));
       if (GetClassName(hWnd, szClassName, sizeof(szClassName)))
-        if (_tccmp(szClassName, _T("#32768")))
+        if (_tccmp(szClassName,TEXT("#32768")))
           if (IsWindowVisible(hWnd))
             UpdateSystemMenu(hWnd);
       break;
@@ -480,7 +480,7 @@ IsServiceHost(
     SecureZeroMemory(szPath, sizeof(szPath));
     GetFinalPathNameByHandle(hProcess, szPath, sizeof(szPath), 0);
     PathStripPath(szPath);
-    return !CompareString(LOCALE_INVARIANT, 0, szPath, (int)_tcslen(szPath), _T("svchost.exe"), (int)_countof(_T("svchost.exe")));
+    return CSTR_EQUAL == CompareString(LOCALE_INVARIANT, 0, szPath, (int)_tcslen(szPath), TEXT("svchost.exe"), (int)ARRAYSIZE(TEXT("svchost.exe")));
 }
 
 BOOL
@@ -667,14 +667,14 @@ BuildPaths(
 {
     switch (eHost) {
     case AOT_X86HOST:
-      PathAppend(lpszWorkingDirectory, _T(".\\x86"));
+      PathAppend(lpszWorkingDirectory,TEXT(".\\x86"));
       CreateDirectory(lpszWorkingDirectory, 0);
-      PathAppend(lpszPath, _T(".\\x86\\")_T(AOT_X86HOST_EXE));
+      PathAppend(lpszPath,TEXT(".\\x86\\")TEXT(AOT_X86HOST_EXE));
       return CloseHandle(UnloadResource(hModule, AOT_X86HOST_EXE_DATA, lpszPath));
     case AOT_X64HOST:
-      PathAppend(lpszWorkingDirectory, _T(".\\x64"));
+      PathAppend(lpszWorkingDirectory,TEXT(".\\x64"));
       CreateDirectory(lpszWorkingDirectory, 0);
-      PathAppend(lpszPath, _T(".\\x64\\")_T(AOT_X64HOST_EXE));
+      PathAppend(lpszPath,TEXT(".\\x64\\")TEXT(AOT_X64HOST_EXE));
       return CloseHandle(UnloadResource(hModule, AOT_X64HOST_EXE_DATA, lpszPath));
     DEFAULT_UNREACHABLE;
     }
@@ -857,10 +857,10 @@ HMODULE CFORCEINLINE APIPRIVATE
 BootstrapHost(
     HMODULE hHostImage)
 {
-    if (!CloseHandle(UnloadResource(hHostImage, AOT_HOST_DLL_DATA, _T(AOT_HOST_DLL))))
+    if (!CloseHandle(UnloadResource(hHostImage, AOT_HOST_DLL_DATA,TEXT(AOT_HOST_DLL))))
       return NULL;
 
-    return LoadLibrary(_T(AOT_HOST_DLL));
+    return LoadLibrary(TEXT(AOT_HOST_DLL));
 }
 
 static
@@ -915,8 +915,8 @@ _tWinMain(
       STARTUPINFOA        sia;
       PROCESS_INFORMATION pi;
 
-      CloseHandle(UnloadResource((HMODULE)&__ImageBase, AOT_HOOK_DLL_DATA, _T(AOT_HOOK_DLL)));
-      CloseHandle(UnloadResource((HMODULE)&__ImageBase, AOT_HOOK_EXE_DATA, _T(AOT_HOOK_EXE)));
+      CloseHandle(UnloadResource((HMODULE)&__ImageBase, AOT_HOOK_DLL_DATA,TEXT(AOT_HOOK_DLL)));
+      CloseHandle(UnloadResource((HMODULE)&__ImageBase, AOT_HOOK_EXE_DATA,TEXT(AOT_HOOK_EXE)));
 
       SecureZeroMemory(&sia, sizeof(STARTUPINFOA));
       sia.cb      = sizeof(STARTUPINFOA);
@@ -968,7 +968,7 @@ _tWinMain(
     
     if (!CloseHandle(
           CreateThread(
-            0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)CbtHookThread, (LPVOID)&hWnd, 0, 0)))
+            0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)CbtHookThread, (LPVOID)hWnd, 0, 0)))
       ExitProcess(EXIT_FAILURE);
 
     else
