@@ -7,7 +7,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 
-#define AOT_HOOK_EXE_MANIFEST   1
+#define AOT_HOOK_MANIFEST       1
 #define AOT_ICON                2
 #define AOT_HOOK_DLL_DATA       101
 #define AOT_HOOK_EXE_DATA       102
@@ -26,7 +26,7 @@
 // Version Resources : Definitions
 // -----------------------------------------------------
 #if (defined _VERRES)
-AOT_EXE_MANIFEST   RT_MANIFEST     "aot.exe.manifest"
+AOT_MANIFEST       RT_MANIFEST     "aot.manifest"
 AOT_ICON           ICON            AOT_ICON_ICO
 
 VS_VERSION_INFO    VERSIONINFO
