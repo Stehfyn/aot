@@ -1,86 +1,72 @@
 @echo off
-setlocal enabledelayedexpansion
-cd "%~dp0"
+setlocal
+cd /d "%~dp0"
 
-for /f "usebackq tokens=*" %%a in (`call "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -prerelease -products * -requires Microsoft.Component.MSBuild -property installationPath`) do (
-   set "VSINSTALLPATH=%%a"
+set "version=1.0.0.0"
+set "src=%~dp0aot.c"
+set "out=%~dp0out"
+
+set "cflags=/nologo /O2 /Oi /MT /std:c11 /Wall /WX /D_NDEBUG /DUNICODE /D_UNICODE /external:anglebrackets /external:W0"
+set "rcflags=/nologo /DVERCSV=%version:.=,% /DVERDOT=\"%version%\""
+set "libs=ntdll.lib kernel32.lib libcmt.lib libucrt.lib user32.lib comctl32.lib shlwapi.lib shell32.lib runtimeobject.lib ole32.lib advapi32.lib"
+
+rem Find the newest MSVC install that ships the x86/x64 C++ tools.
+set "vswhere=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+for /f "usebackq delims=" %%p in (`"%vswhere%" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find VC\Auxiliary\Build\vcvarsall.bat`) do set "vcvarsall=%%p"
+if not defined vcvarsall (
+   echo No Visual Studio C++ toolset found.
+   exit /b 1
 )
 
-if not defined VSINSTALLPATH (
-   echo No Visual Studio installation detected.
-   exit /b 0
-)
+rmdir /s /q "%out%" 2>nul
+mkdir "%out%\bin"
 
-set out=out
-set sources=..\..\aot.c
-set cflags=/nologo /O2 /Oi /MT /std:c11 /Wall /WX /D _NDEBUG /D UNICODE /D _UNICODE
-set libs=ntdll.lib Kernel32.lib libcmt.lib user32.lib comctl32.lib  Shlwapi.lib shell32.lib runtimeobject.lib ole32.lib advapi32.lib
-
-set "build_hook=/?"
-
-if exist "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" (
-	rmdir /s /q %out%
-	mkdir %out%
-	pushd %out%
-	mkdir int
-
-	call :%%build_hook%% aot x86 3>&1 >nul
-	call :%%build_hook%% aot x64 3>&1 >nul
-
-	mkdir bin
-	pushd int
-	call "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" x86
-
-	echo. && echo  x86 release resources
-	copy ..\..\aot.c aot.c
-	copy ..\..\aot.ico aot.ico
-	copy ..\..\aot.exe.manifest aot.exe.manifest
-	ren aot.c aot.rc
-
-	rc /DVERCSV=""1,0,0,0"" /DVERDOT=""1.0.0.0"" -d _VERRES /fo ver.res aot.rc
-	rc -d _RELRES /fo aot.res aot.rc
-
-	echo. && echo x86 release exe
-	cl %cflags% /D "_RELEASE" /Tc %sources% aot.res %libs% ver.res /link /MACHINE:x86 /OUT:AlwaysOnTop.exe /SUBSYSTEM:Windows
-	copy AlwaysOnTop.exe ..\bin\AlwaysOnTop.exe
-
-	popd
-	popd
-)
-
-if "%0" == ":%build_hook%" (
-	echo Build %2 Hook @call:
-	call "%VSINSTALLPATH%\VC\Auxiliary\Build\vcvarsall.bat" %2
-	
-	rmdir /s /q %2 2>nul
-	mkdir %2
-	pushd %2
-
-	copy ..\..\aot.c aot.c
-	copy ..\..\aot.ico aot.ico
-	copy ..\..\aot.exe.manifest aot.exe.manifest
-	ren aot.c aot.rc
-
-	rc /DVERCSV=""1,0,0,0"" /DVERDOT=""1.0.0.0"" -d _VERRES /fo ver.res aot.rc
-
-	echo. && echo %2 hook dll
-	cl %cflags% /D "_WINDLL" /D "_AOTHOOKDLL" /LD %sources% /link /MACHINE:%2 %libs% /IMPLIB:%1-hook.lib /OUT:%1-hook.dll /ENTRY:DllMain
-
-	echo. && echo %2 host dll
-	cl %cflags% /D "_WINDLL" /D "_AOTHOSTDLL" /LD %sources% /link /MACHINE:%2 %libs% /IMPLIB:%1-host.lib /OUT:%1-host.dll /ENTRY:DllMain
-
-	echo. && echo %2 hook exe
-	cl %cflags% /Tc %sources% %libs% %1-hook.lib %1-host.lib ver.res /link /MACHINE:%2 /OUT:%1-hook.exe /SUBSYSTEM:Windows
-
-	echo. && echo %2 resources
-	rc -d _HOSTRES /fo aot.res aot.rc
-
-	echo. && echo %2 host exe
-	cl %cflags% /D "_HOST" /Tc %sources% aot.res %libs% %1-host.lib ver.res /link /MACHINE:%2 /OUT:%1%2-host.exe /SUBSYSTEM:Windows
-	copy %1%2-host.exe ..\int\%1%2-host.exe
-
-	popd
-	
-)>&3
-
+call :host x86
+call :host x64
+call :release
 exit /b 0
+
+
+rem host <arch> -- build out\<arch>\aot<arch>-host.exe with the hook dll, hook
+rem exe and host dll embedded, then hand it up to out\ for the release build.
+rem setlocal keeps the vcvarsall env and cwd scoped to this call.
+:host
+setlocal
+echo.
+echo === %1 ===
+call "%vcvarsall%" %1 >nul
+mkdir "%out%\%1"
+cd /d "%out%\%1"
+
+call :run rc %rcflags% /D_VERRES /fo ver.res "%src%"
+call :run cl %cflags% /D_WINDLL /D_AOTHOOKDLL /LD "%src%" %libs% /link /MACHINE:%1 /ENTRY:DllMain /IMPLIB:aot-hook.lib /OUT:aot-hook.dll
+call :run cl %cflags% /D_WINDLL /D_AOTHOSTDLL /LD "%src%" %libs% /link /MACHINE:%1 /ENTRY:DllMain /IMPLIB:aot-host.lib /OUT:aot-host.dll
+call :run cl %cflags% "%src%" ver.res %libs% aot-hook.lib aot-host.lib /link /MACHINE:%1 /SUBSYSTEM:Windows /OUT:aot-hook.exe
+
+call :run rc /nologo /D_HOSTRES /fo aot.res "%src%"
+call :run cl %cflags% /D_HOST "%src%" aot.res ver.res %libs% aot-host.lib /link /MACHINE:%1 /SUBSYSTEM:Windows /OUT:aot%1-host.exe
+copy /y aot%1-host.exe "%out%" >nul
+exit /b 0
+
+
+rem release -- build out\bin\AlwaysOnTop.exe: a 32-bit launcher with both host
+rem executables embedded as resources.
+:release
+setlocal
+echo.
+echo === release ===
+call "%vcvarsall%" x86 >nul
+cd /d "%out%"
+
+call :run rc %rcflags% /D_VERRES /fo ver.res "%src%"
+call :run rc /nologo /D_RELRES /fo aot.res "%src%"
+call :run cl %cflags% /D_RELEASE "%src%" aot.res ver.res %libs% /link /MACHINE:x86 /SUBSYSTEM:Windows /OUT:bin\AlwaysOnTop.exe
+exit /b 0
+
+
+rem run <command> -- echo the command line, then run it.
+:run
+echo.
+echo   ^> %*
+%*
+exit /b %errorlevel%
