@@ -177,7 +177,7 @@ OnNcCreate(
     LPCREATESTRUCT lpCreateStruct)
 {
     LONG_PTR offset = 0;
-    HANDLE   hInstanceMutex = CreateMutex(0, TRUE, AOT_HOOK_INSTANCE_MUTEX);
+    HANDLE   hInstanceMutex = CreateMutex(NULL, TRUE, AOT_HOOK_INSTANCE_MUTEX);
     
     if (hInstanceMutex && (GetLastError() == ERROR_ALREADY_EXISTS))
     {
@@ -288,7 +288,7 @@ CbtHookThread(
       );
 
       SecureZeroMemory(&msg, sizeof(MSG));
-      while (GetMessage(&msg, 0, 0, 0)) { 
+      while (GetMessage(&msg, NULL, 0, 0)) { 
         DispatchMessage(&msg);
 
         switch (msg.message) {
@@ -537,7 +537,7 @@ UnloadFile(
     LPCVOID lpBuffer,
     DWORD   nNumberOfBytesToWrite)
 {
-    HANDLE hFile = CreateFile(lpszName, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    HANDLE hFile = CreateFile(lpszName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
     if (INVALID_HANDLE_VALUE != hFile)
     {
@@ -668,12 +668,12 @@ BuildPaths(
     switch (eHost) {
     case AOT_X86HOST:
       PathAppend(lpszWorkingDirectory,TEXT(".\\x86"));
-      CreateDirectory(lpszWorkingDirectory, 0);
+      CreateDirectory(lpszWorkingDirectory, NULL);
       PathAppend(lpszPath,TEXT(".\\x86\\")TEXT(AOT_X86HOST_EXE));
       return CloseHandle(UnloadResource(hModule, AOT_X86HOST_EXE_DATA, lpszPath));
     case AOT_X64HOST:
       PathAppend(lpszWorkingDirectory,TEXT(".\\x64"));
-      CreateDirectory(lpszWorkingDirectory, 0);
+      CreateDirectory(lpszWorkingDirectory, NULL);
       PathAppend(lpszPath,TEXT(".\\x64\\")TEXT(AOT_X64HOST_EXE));
       return CloseHandle(UnloadResource(hModule, AOT_X64HOST_EXE_DATA, lpszPath));
     DEFAULT_UNREACHABLE;
@@ -695,14 +695,14 @@ CreateSuspendedHost(
     if (!BuildPaths(hModule, eHost, lpszPath, lpszWorkingDirectory))
       return FALSE;
 
-    if (!CreateProcess(0, lpszPath, 0, 0, 0, CREATE_SUSPENDED, 0, lpszWorkingDirectory, lpsi, lppi))
+    if (!CreateProcess(NULL, lpszPath, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, lpszWorkingDirectory, lpsi, lppi))
       return FALSE;
     
     else
     {
       lpManagedHost->hKillcord =
         CreateThread(
-          0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)Killcord, (LPVOID)(DWORD_PTR)lppi->dwProcessId, CREATE_SUSPENDED, 0);
+          NULL, 0, (LPTHREAD_START_ROUTINE)(LPVOID)Killcord, (LPVOID)(DWORD_PTR)lppi->dwProcessId, CREATE_SUSPENDED, NULL);
        return !!lpManagedHost->hKillcord;
     }
 }
@@ -755,18 +755,18 @@ CreateTrayIcon(
     atom              = RegisterClass(&wc);
 
     SecureZeroMemory(&hWnd, sizeof(HWND));
-    if (!(hWnd = CreateWindow(MAKEINTATOM(atom), AOT_INSTANCE_NAME, 0, 0, 0, 0, 0, 0, 0, (HINSTANCE)&__ImageBase, 0)))
+    if (!(hWnd = CreateWindow(MAKEINTATOM(atom), AOT_INSTANCE_NAME, 0, 0, 0, 0, 0, NULL, NULL, (HINSTANCE)&__ImageBase, NULL)))
       return FALSE;
 
-    nid->cbSize = sizeof(NOTIFYICONDATA);
-    nid->hIcon  = LoadIcon((HINSTANCE)&__ImageBase, MAKEINTRESOURCE(AOT_ICON));
-    nid->uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    SecureZeroMemory(nid, sizeof(NOTIFYICONDATA));
+    nid->cbSize           = sizeof(NOTIFYICONDATA);
+    nid->hWnd             = hWnd;
+    nid->uFlags           = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid->uCallbackMessage = WM_AOTTRAYICON;
+    nid->hIcon            = LoadIcon((HINSTANCE)&__ImageBase, MAKEINTRESOURCE(AOT_ICON));
     lstrcpyn(nid->szTip, AOT_INSTANCE_NAME, ARRAYSIZE(nid->szTip));
-    nid->hWnd = hWnd;
-    Shell_NotifyIcon(NIM_ADD, nid);
 
-    return TRUE;
+    return Shell_NotifyIcon(NIM_ADD, nid);
 }
 
 static
@@ -777,13 +777,12 @@ TrayThread(
     UNREFERENCED_PARAMETER(unused);
 
     NOTIFYICONDATA nid;
-    SecureZeroMemory(&nid, sizeof(NOTIFYICONDATA));
 
     if (CreateTrayIcon(&nid))
     {
       MSG msg;
       SecureZeroMemory(&msg, sizeof(MSG));
-      while (GetMessage(&msg, 0, 0, 0)) {
+      while (GetMessage(&msg, NULL, 0, 0)) {
         DispatchMessage(&msg);
       }
     }
@@ -801,7 +800,7 @@ HooksThread(
     AOTINSTANCE AlwaysOnTop;
     SecureZeroMemory(&AlwaysOnTop, sizeof(AOTINSTANCE));
 
-    AlwaysOnTop.hJob = CreateJobObject(0, 0);
+    AlwaysOnTop.hJob = CreateJobObject(NULL, NULL);
     if (!SetJobInformation(AlwaysOnTop.hJob))
     {
       CloseHandle(AlwaysOnTop.hJob);
@@ -889,14 +888,14 @@ WinMainCRTStartup(
     VOID)
 {
     MSG msg;
-    PostMessage(0, 0, 0, 0);
-    GetMessage(&msg, 0, 0, 0);
+    PostMessage(NULL, 0, 0, 0);
+    GetMessage(&msg, NULL, 0, 0);
 
     SetCurrentProcessExplicitAppUserModelID(AOT_INSTANCE_NAME_W);
 
 #if   (defined _RELEASE)
-    CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)TrayThread,  0, 0, 0));
-    CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)HooksThread, 0, 0, 0));
+    CloseHandle(CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)(LPVOID)TrayThread,  0, 0, NULL));
+    CloseHandle(CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)(LPVOID)HooksThread, 0, 0, NULL));
     SuspendThread(GetCurrentThread());
     ExitProcess(EXIT_SUCCESS);
 
@@ -915,7 +914,7 @@ WinMainCRTStartup(
       sia.cb      = sizeof(STARTUPINFOA);
       sia.dwFlags = STARTF_FORCEOFFFEEDBACK;
 
-      if (!CreateProcessA(0, AOT_HOOK_EXE, 0, 0, 0, CREATE_SUSPENDED, 0, 0, &sia, &pi))
+      if (!CreateProcessA(NULL, AOT_HOOK_EXE, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &sia, &pi))
       {
         FreeLibrary(hHostInstance);
         ExitProcess(EXIT_FAILURE);
@@ -941,7 +940,7 @@ WinMainCRTStartup(
 
     if (!CloseHandle(
            CreateThread(
-             0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)Sentinel, (LPVOID)(DWORD_PTR)GetHostProcessId(), 0, 0)))
+             NULL, 0, (LPTHREAD_START_ROUTINE)(LPVOID)Sentinel, (LPVOID)(DWORD_PTR)GetHostProcessId(), 0, NULL)))
       ExitProcess(EXIT_FAILURE);
 
     SecureZeroMemory(&wc, sizeof(WNDCLASS));
@@ -956,18 +955,18 @@ WinMainCRTStartup(
       ExitProcess(EXIT_FAILURE);
 
     SecureZeroMemory(&aot,  sizeof(AOTUSERDATA));
-    if (!(hWnd = CreateWindow(MAKEINTATOM(atom), AOT_HOOK_NAME, WS_CHILD, 0, 0, 0, 0, hwndParent, 0, (HINSTANCE)&__ImageBase, &aot)))
+    if (!(hWnd = CreateWindow(MAKEINTATOM(atom), AOT_HOOK_NAME, WS_CHILD, 0, 0, 0, 0, hwndParent, NULL, (HINSTANCE)&__ImageBase, &aot)))
       ExitProcess(EXIT_FAILURE);
     
     if (!CloseHandle(
           CreateThread(
-            0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)CbtHookThread, (LPVOID)hWnd, 0, 0)))
+            NULL, 0, (LPTHREAD_START_ROUTINE)(LPVOID)CbtHookThread, (LPVOID)hWnd, 0, NULL)))
       ExitProcess(EXIT_FAILURE);
 
     else
     {
       SecureZeroMemory(&msg, sizeof(MSG));
-      while (GetMessage(&msg, 0, 0, 0)) {
+      while (GetMessage(&msg, NULL, 0, 0)) {
         DispatchMessage(&msg);
       }
 
