@@ -26,8 +26,6 @@ and 64-bit applications alike.
 3. Click it to pin the window on top; the entry shows a checkmark while it's active. Click again to unpin.
 4. **Right-click** the tray icon to quit.
 
-https://github.com/user-attachments/assets/d07e49d3-dd72-44e0-9bc6-bc5dba2501dc
-
 ## License
 
 ```
