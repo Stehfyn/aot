@@ -140,6 +140,7 @@ GetHookProcessId(
 // -----------------------------------------------------
 // aot-hook.exe : Implementation
 // -----------------------------------------------------
+#define AOT_INSTANCE_NAME_W        (L"AlwaysOnTop")
 #define AOT_INSTANCE_NAME          (TEXT("AlwaysOnTop"))
 #define AOT_HOOK_NAME              (TEXT("AOT_HookWnd"))
 #define AOT_TRAY_CLASS_NAME        (TEXT("AOT_TrayWndClass"))
@@ -891,7 +892,7 @@ WinMainCRTStartup(
     PostMessage(0, 0, 0, 0);
     GetMessage(&msg, 0, 0, 0);
 
-    SetCurrentProcessExplicitAppUserModelID(AOT_INSTANCE_NAME);
+    SetCurrentProcessExplicitAppUserModelID(AOT_INSTANCE_NAME_W);
 
 #if   (defined _RELEASE)
     CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)TrayThread,  0, 0, 0));
