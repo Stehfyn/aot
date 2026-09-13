@@ -749,8 +749,8 @@ CreateTrayIcon(
     HWND      hWnd;
 
     SecureZeroMemory(&wc, sizeof(WNDCLASS));
-    wc.hInstance      = (HINSTANCE)&__ImageBase;
     wc.lpfnWndProc    = TrayWndProc;
+    wc.hInstance      = (HINSTANCE)&__ImageBase;
     wc.lpszClassName  = AOT_TRAY_CLASS_NAME;
     atom              = RegisterClass(&wc);
 
