@@ -840,7 +840,7 @@ HooksThread(
     AlwaysOnTop.hObjects[1] = AlwaysOnTop.x64ManagedHost.pi.hProcess;
     AlwaysOnTop.hObjects[2] = AlwaysOnTop.x86ManagedHost.hKillcord;
     AlwaysOnTop.hObjects[3] = AlwaysOnTop.x64ManagedHost.hKillcord;
-    WaitForMultipleObjects(4, AlwaysOnTop.hObjects, FALSE, INFINITE);
+    WaitForMultipleObjects(ARRAYSIZE(AlwaysOnTop.hObjects), AlwaysOnTop.hObjects, FALSE, INFINITE);
 
     CloseHandle(AlwaysOnTop.x86ManagedHost.pi.hProcess);
     CloseHandle(AlwaysOnTop.x64ManagedHost.pi.hProcess);
