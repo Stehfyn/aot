@@ -4,7 +4,6 @@
 #define _WIN32_WINNT            0x601
 #define STRICT
 #define WIN32_LEAN_AND_MEAN
-#define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 
 #define AOT_HOOK_MANIFEST       1
@@ -366,7 +365,7 @@ CBTProc(
       HWND hWnd = (HWND)wParam;
       SecureZeroMemory(szClassName, sizeof(szClassName));
       if (GetClassName(hWnd, szClassName, sizeof(szClassName)))
-        if (_tccmp(szClassName,TEXT("#32768")))
+        if (lstrcmp(szClassName,TEXT("#32768")))
           if (IsWindowVisible(hWnd))
             UpdateSystemMenu(hWnd);
       break;
@@ -480,7 +479,7 @@ IsServiceHost(
     SecureZeroMemory(szPath, sizeof(szPath));
     GetFinalPathNameByHandle(hProcess, szPath, sizeof(szPath), 0);
     PathStripPath(szPath);
-    return CSTR_EQUAL == CompareString(LOCALE_INVARIANT, 0, szPath, (int)_tcslen(szPath), TEXT("svchost.exe"), (int)ARRAYSIZE(TEXT("svchost.exe")));
+    return CSTR_EQUAL == CompareString(LOCALE_INVARIANT, 0, szPath, lstrlen(szPath), TEXT("svchost.exe"), (int)ARRAYSIZE(TEXT("svchost.exe")));
 }
 
 BOOL
@@ -762,7 +761,7 @@ CreateTrayIcon(
     nid->hIcon  = LoadIcon((HINSTANCE)&__ImageBase, MAKEINTRESOURCE(AOT_ICON));
     nid->uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid->uCallbackMessage = WM_AOTTRAYICON;
-    _tcscpy(nid->szTip, AOT_INSTANCE_NAME);
+    lstrcpyn(nid->szTip, AOT_INSTANCE_NAME, ARRAYSIZE(nid->szTip));
     nid->hWnd = hWnd;
     Shell_NotifyIcon(NIM_ADD, nid);
 
@@ -883,19 +882,11 @@ Sentinel(
     ExitProcess(EXIT_FAILURE);
 }
 
-int
+VOID
 APIENTRY
-_tWinMain(
-    HINSTANCE hInstance,
-    HINSTANCE hPrevInstance,
-    LPTSTR    lpCmdLine,
-    int       nCmdShow)
+WinMainCRTStartup(
+    VOID)
 {
-    UNREFERENCED_PARAMETER(hInstance);
-    UNREFERENCED_PARAMETER(hPrevInstance);
-    UNREFERENCED_PARAMETER(lpCmdLine);
-    UNREFERENCED_PARAMETER(nCmdShow);
-
     MSG msg;
     PostMessage(0, 0, 0, 0);
     GetMessage(&msg, 0, 0, 0);
@@ -906,6 +897,7 @@ _tWinMain(
     CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)TrayThread,  0, 0, 0));
     CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)(LPVOID)HooksThread, 0, 0, 0));
     SuspendThread(GetCurrentThread());
+    ExitProcess(EXIT_SUCCESS);
 
 #elif (defined _HOST)
     HMODULE hHostInstance = BootstrapHost((HMODULE)&__ImageBase);
@@ -952,7 +944,7 @@ _tWinMain(
       ExitProcess(EXIT_FAILURE);
 
     SecureZeroMemory(&wc, sizeof(WNDCLASS));
-    wc.hInstance     = hInstance;
+    wc.hInstance     = (HINSTANCE)&__ImageBase;
     wc.lpfnWndProc   = HookWndProc;
     wc.lpszClassName = AOT_HOOK_CLASS_NAME;
     

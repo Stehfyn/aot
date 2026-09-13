@@ -6,9 +6,10 @@ set "version=1.0.0.0"
 set "src=%~dp0aot.c"
 set "out=%~dp0out"
 
-set "cflags=/nologo /O2 /Oi /MT /std:c11 /Wall /WX /D_NDEBUG /DUNICODE /D_UNICODE /external:anglebrackets /external:W0"
+rem Direct entry points bypass CRT initialization, including the /GS cookie.
+set "cflags=/nologo /O2 /Oi /GS- /Zl /std:c11 /Wall /WX /D_NDEBUG /DUNICODE /D_UNICODE /external:anglebrackets /external:W0"
 set "rcflags=/nologo /DVERCSV=%version:.=,% /DVERDOT=\"%version%\""
-set "libs=ntdll.lib kernel32.lib libcmt.lib libucrt.lib user32.lib comctl32.lib shlwapi.lib shell32.lib runtimeobject.lib ole32.lib advapi32.lib"
+set "libs=ntdll.lib kernel32.lib user32.lib comctl32.lib shlwapi.lib shell32.lib runtimeobject.lib ole32.lib advapi32.lib"
 
 rem Find the newest MSVC install that ships the x86/x64 C++ tools.
 set "vswhere=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -39,12 +40,12 @@ mkdir "%out%\%1"
 cd /d "%out%\%1"
 
 call :run rc %rcflags% /D_VERRES /fo ver.res "%src%"
-call :run cl %cflags% /D_WINDLL /D_AOTHOOKDLL /LD "%src%" %libs% /link /MACHINE:%1 /ENTRY:DllMain /IMPLIB:aot-hook.lib /OUT:aot-hook.dll
-call :run cl %cflags% /D_WINDLL /D_AOTHOSTDLL /LD "%src%" %libs% /link /MACHINE:%1 /ENTRY:DllMain /IMPLIB:aot-host.lib /OUT:aot-host.dll
-call :run cl %cflags% "%src%" ver.res %libs% aot-hook.lib aot-host.lib /link /MACHINE:%1 /SUBSYSTEM:Windows /OUT:aot-hook.exe
+call :run cl %cflags% /D_WINDLL /D_AOTHOOKDLL /LD "%src%" %libs% /link /NODEFAULTLIB /MACHINE:%1 /ENTRY:DllMain /IMPLIB:aot-hook.lib /OUT:aot-hook.dll
+call :run cl %cflags% /D_WINDLL /D_AOTHOSTDLL /LD "%src%" %libs% /link /NODEFAULTLIB /MACHINE:%1 /ENTRY:DllMain /IMPLIB:aot-host.lib /OUT:aot-host.dll
+call :run cl %cflags% "%src%" ver.res %libs% aot-hook.lib aot-host.lib /link /NODEFAULTLIB /MACHINE:%1 /SUBSYSTEM:Windows /OUT:aot-hook.exe
 
 call :run rc /nologo /D_HOSTRES /fo aot.res "%src%"
-call :run cl %cflags% /D_HOST "%src%" aot.res ver.res %libs% aot-host.lib /link /MACHINE:%1 /SUBSYSTEM:Windows /OUT:aot%1-host.exe
+call :run cl %cflags% /D_HOST "%src%" aot.res ver.res %libs% aot-host.lib /link /NODEFAULTLIB /MACHINE:%1 /SUBSYSTEM:Windows /OUT:aot%1-host.exe
 copy /y aot%1-host.exe "%out%" >nul
 exit /b 0
 
@@ -60,7 +61,7 @@ cd /d "%out%"
 
 call :run rc %rcflags% /D_VERRES /fo ver.res "%src%"
 call :run rc /nologo /D_RELRES /fo aot.res "%src%"
-call :run cl %cflags% /D_RELEASE "%src%" aot.res ver.res %libs% /link /MACHINE:x86 /SUBSYSTEM:Windows /OUT:bin\AlwaysOnTop.exe
+call :run cl %cflags% /D_RELEASE "%src%" aot.res ver.res %libs% /link /NODEFAULTLIB /MACHINE:x86 /SUBSYSTEM:Windows /OUT:bin\AlwaysOnTop.exe
 exit /b 0
 
 
